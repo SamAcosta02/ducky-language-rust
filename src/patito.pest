@@ -1,0 +1,57 @@
+WHITESPACE = _{ " " | "\n" | "\t" }
+
+program = {
+  SOI ~
+  programKeyword ~ id ~ delimiter ~ vars? ~ funcs* ~ beginKeyword ~ body ~ endKeyword ~
+  EOI
+}
+
+vars = { varsKeyword ~ (id_list ~ ":" ~ typeVar ~ delimiter)+ }
+funcs = { voidKeyword ~ id ~ "(" ~ parameters? ~ ")" ~ body ~ delimiter }
+body = { "{" ~ statement* ~ "}" }
+
+statement = { assign | condition | while_loop | func_call | print }
+condition = { ifKeyword ~ "(" ~ expression ~ ")" ~ body ~ ("else" ~ body)? ~ delimiter }
+while_loop = { whileKeyword ~ "(" ~ expression ~ ")" ~ doKeyword ~ body ~ delimiter }
+func_call = { id ~ "(" ~ expression ~ ("," ~ expression)* ~ ")" ~ delimiter }
+print = { printKeyword ~ "(" ~ print_element ~ ("," ~ print_element)* ~ ")" ~ delimiter }
+print_element = { expression | string }
+
+assign = { id ~ "=" ~ expression ~ delimiter }
+expression = { exp ~ (comparator ~ exp)? }
+exp = { term ~ (sign ~ exp)* }
+term = { factor ~ (operator ~ term)* }
+factor = { ("(" ~ expression ~ ")") | value}
+value = { sign? ~ (id | cte) }
+cte = { cte_float | cte_int }
+
+id = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" ~ ASCII_ALPHANUMERIC)* }
+cte_int = @{ "0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+cte_float = @{ cte_int ~ "." ~ ASCII_DIGIT+ }
+
+string = ${ "\"" ~ inner ~ "\"" }
+inner = @{ char* }
+char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+id_list = { id ~ ("," ~ id)* }
+id_type_list = { id ~ ":" ~ typeVar }
+parameters = { id_type_list ~ ("," ~ id_type_list)* }
+
+typeVar = { "int" | "float" }
+comparator = { "==" | "!=" | "<" | ">" }
+sign = { "+" | "-" }
+operator = { "*" | "/" }
+programKeyword = { "program" }
+beginKeyword = { "begin" }
+endKeyword = { "end" }
+varsKeyword = { "vars" }
+voidKeyword = { "void" }
+ifKeyword = { "if" }
+delimiter = { ";" }
+whileKeyword = { "while" }
+doKeyword = { "do" }
+printKeyword = { "print" }

@@ -1,0 +1,1 @@
+confirm_user( input_height, input_age, height > 10 );

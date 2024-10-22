@@ -1,0 +1,1 @@
+vars some_var, some_other_var, even_more123: int; diff_type: float;
