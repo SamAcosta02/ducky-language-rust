@@ -1,0 +1,10 @@
+program test1;
+
+vars age: int; height: float;
+
+begin 
+{
+  age = 15;
+  height = 1.71;
+}
+end
