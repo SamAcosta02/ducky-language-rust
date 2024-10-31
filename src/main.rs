@@ -31,7 +31,7 @@ fn visualize_pair(
         println!("Rule: **{:?}** not a main rule", current_rule);
     }
 
-    // match the current rule
+    // match the current rule depending on the context
     match pair.as_rule() {
         Rule::programKeyword => {
             println!("ACTION: Create dir_func \n"); //1
@@ -56,7 +56,6 @@ fn visualize_pair(
                             } else {
                                 println!("ACTION: Add id-name to the id-type-stack \n");
                                 context_ids.push(pair.as_str().to_string());
-                                // func_dir.get_mut(top).unwrap().insert(pair.as_str().to_string(), current_type.to_string());
                             }
                         }
                         
@@ -71,13 +70,25 @@ fn visualize_pair(
         Rule::typeVar => {
             println!("ACTION: update current-type to {} \n", pair.as_str().to_string()); //4
             *current_type = pair.as_str().to_string();
+            for id in context_ids.iter() {
+                if let Some(top) = context_func.last() {
+                    func_dir.get_mut(top).unwrap().insert(id.to_string(), current_type.to_string());
+                }
+            }
+        }
+        Rule::voidKeyword => {
+            println!("ACTION: Create dir_func \n"); //1
+            func_dir.insert(String::from("void"), HashMap::new());
+            context_func.push("void".to_string());
+            println!("{:#?}", func_dir);
         }
         _ => {
             println!("... \n");
         }
     }
-
+    
     // Check current stack status
+    println!("CONTEXT IDs: {:#?} \n", context_ids);
     println!("CONTEXT STACK {:?}", &context_stack);
     for inner_pair in pair.into_inner() {
         visualize_pair(
@@ -100,7 +111,7 @@ fn visualize_pair(
 }
 
 fn main() {
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app1.dky";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app1.dky";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     // Create semantic cube that will tell us what type of data will be returned when performing an operation
@@ -121,7 +132,7 @@ fn main() {
     let mut context_stack: Vec<Rule> = Vec::new();
     let mut context_ids: Vec<String> = Vec::new();
     let mut context_func: Vec<String> = Vec::new();
-    let main_rules: HashSet<Rule> = [Rule::program, Rule::vars]
+    let main_rules: HashSet<Rule> = [Rule::program, Rule::vars, Rule::funcs, Rule::voidKeyword]
         .iter()
         .cloned()
         .collect();
@@ -141,6 +152,7 @@ fn main() {
                     &mut context_func
                 );
             }
+            println!("{:#?}", func_dir);
         }
         Err(e) => {
             println!("Error: {:?}", e);

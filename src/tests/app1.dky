@@ -2,6 +2,8 @@ program test1;
 
 vars age: int; height: float;
 
+void interesting() {};
+
 begin 
 {
   age = 15;
