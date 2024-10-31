@@ -15,7 +15,7 @@ fn visualize_pair(
     func_dir: &mut HashMap<String, HashMap<String, String>>,
     semantic_cube: &[[[&str; 4]; 2]; 2],
     context_ids: &mut Vec<String>,
-    context_func: &mut Vec<String>
+    current_func: &mut String
 ) {
 
     // visualize current rule
@@ -36,29 +36,44 @@ fn visualize_pair(
         Rule::programKeyword => {
             println!("ACTION: Create dir_func \n"); //1
             func_dir.insert(String::from("global"), HashMap::new());
-            context_func.push("global".to_string());
+            *current_func = String::from("global");
             println!("{:#?}", func_dir);
         }
         Rule::id => {
             if let Some(&parent_rule) = context_stack.iter().rev().next() {
+                // Check in what context was id matched in
                 match parent_rule {
                     Rule::program => {
                         println!("ACTION: Add id-name and type program to dir_func \n"); //2
                     },
                     Rule::vars => {
                         println!("ACTION: Search for id-name in current VarTable"); //5
-                        // look for the current func context and check if the id is there
-                        if let Some(top) = context_func.last() {
-                            // If it is panic as it is already declared
-                            if func_dir.get_mut(top).unwrap().contains_key(pair.as_str()) {
-                                panic!("ERROR: id {} already exists in current context", pair.as_str());
-                            // otherqiwe insert the id and type
-                            } else {
-                                println!("ACTION: Add id-name to the id-type-stack \n");
-                                context_ids.push(pair.as_str().to_string());
-                            }
+                        // Look for the id in the current function
+                        // If it is panic as it is already declared
+                        if func_dir.get_mut(current_func).unwrap().contains_key(pair.as_str()) {
+                            panic!("ERROR: id {} already exists in current context", pair.as_str());
+                        // otherwise insert the id to the context-ids stack (to later add them to the dir_func)
+                        } else {
+                            println!("ACTION: Add id-name to context-ids to later add them to dir_func \n");
+                            context_ids.push(pair.as_str().to_string());
                         }
-                        
+                    },
+                    Rule::funcs => {
+                        // Update the current function id and add it to the func_dir if it doesn't already exist
+                        println!("ACTION: Add id-name and type func to func_dir \n"); //2
+                        *current_func = pair.as_str().to_string();
+
+                        if !func_dir.contains_key(&current_func.to_string()) {
+                            func_dir.insert(current_func.to_string(), HashMap::new());
+                            println!("Function '{}' added to func_dir.", current_func);
+                        } else {
+                            panic!("ERROR: Function '{}' already exists.", current_func);
+                        }
+                        println!("{:#?}", func_dir);
+                    },
+                    Rule::parameters => {
+                        // Add the parameter ID to the contex_ids stack
+                        context_ids.push(pair.as_str().to_string());
                     },
                     _ => println!("id in another context."),
                 }
@@ -69,17 +84,19 @@ fn visualize_pair(
         }
         Rule::typeVar => {
             println!("ACTION: update current-type to {} \n", pair.as_str().to_string()); //4
+            // Get the currenty type
             *current_type = pair.as_str().to_string();
-            for id in context_ids.iter() {
-                if let Some(top) = context_func.last() {
-                    func_dir.get_mut(top).unwrap().insert(id.to_string(), current_type.to_string());
+
+            // Assign all variables of this type, checking if they already exist
+            while let Some(id) = context_ids.pop() {
+                if let Some(context) = func_dir.get_mut(current_func) {
+                    if context.contains_key(&id) {
+                        panic!("ERROR: id '{}' already exists in the current function context '{}'", id, current_func);
+                    } else {
+                        context.insert(id, current_type.to_string());
+                    }
                 }
             }
-        }
-        Rule::voidKeyword => {
-            println!("ACTION: Create dir_func \n"); //1
-            func_dir.insert(String::from("void"), HashMap::new());
-            context_func.push("void".to_string());
             println!("{:#?}", func_dir);
         }
         _ => {
@@ -88,8 +105,9 @@ fn visualize_pair(
     }
     
     // Check current stack status
-    println!("CONTEXT IDs: {:#?} \n", context_ids);
+    println!("CONTEXT IDs: {:?}", context_ids);
     println!("CONTEXT STACK {:?}", &context_stack);
+    println!("CURRENT FUNC {:?}", current_func);
     for inner_pair in pair.into_inner() {
         visualize_pair(
             inner_pair,
@@ -99,7 +117,7 @@ fn visualize_pair(
             func_dir,
             semantic_cube,
             context_ids,
-            context_func
+            current_func
         );
     }
 
@@ -111,7 +129,7 @@ fn visualize_pair(
 }
 
 fn main() {
-    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app1.dky";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app1.dky";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     // Create semantic cube that will tell us what type of data will be returned when performing an operation
@@ -131,8 +149,8 @@ fn main() {
     let mut current_type = String::new();
     let mut context_stack: Vec<Rule> = Vec::new();
     let mut context_ids: Vec<String> = Vec::new();
-    let mut context_func: Vec<String> = Vec::new();
-    let main_rules: HashSet<Rule> = [Rule::program, Rule::vars, Rule::funcs, Rule::voidKeyword]
+    let mut current_func: String = String::new();
+    let main_rules: HashSet<Rule> = [Rule::program, Rule::vars, Rule::funcs, Rule::funcs, Rule::parameters]
         .iter()
         .cloned()
         .collect();
@@ -149,7 +167,7 @@ fn main() {
                     &mut func_dir,
                     &semantic_cube,
                     &mut context_ids,
-                    &mut context_func
+                    &mut current_func
                 );
             }
             println!("{:#?}", func_dir);

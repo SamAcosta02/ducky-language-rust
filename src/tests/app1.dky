@@ -1,8 +1,9 @@
 program test1;
 
-vars age: int; height: float;
+vars age, years: int; height, altitude: float;
 
-void interesting() {};
+void some_func(x:int, y:float) {};
+void some_other_func(k:int, z:float) {};
 
 begin 
 {
