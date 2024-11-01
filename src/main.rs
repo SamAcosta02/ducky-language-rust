@@ -129,7 +129,7 @@ fn visualize_pair(
 }
 
 fn main() {
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app1.dky";
+    let path = "app1.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     // Create semantic cube that will tell us what type of data will be returned when performing an operation
