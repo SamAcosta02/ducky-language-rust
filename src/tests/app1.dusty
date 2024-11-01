@@ -1,0 +1,13 @@
+program test1;
+
+vars age, years: int; height, altitude: float;
+
+void some_func(x:int, y:float) {};
+void some_other_func(k:int, z:float) {};
+
+begin 
+{
+  age = 15;
+  height = 1.71;
+}
+end
