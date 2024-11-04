@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, fs};
+use std::{collections::{HashMap, HashSet, VecDeque}, fs};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -7,15 +7,30 @@ use pest_derive::Parser;
 #[grammar = "patito.pest"]
 pub struct PatitoParser;
 
+fn generate_quads(
+    semantic_cube: &[[[&str; 8]; 2]; 2],
+    current_expr: &mut VecDeque<[&str; 4]>,
+    poper: &mut Vec<char>,
+    op: &mut Vec<[String; 2]>,
+    func_dir: &HashMap<String, HashMap<String, String>>,
+    current_func: &String,
+    pair: &pest::iterators::Pair<Rule>
+) {
+    for inner_pair in pair.into_inner() {
+        generate_quads(semantic_cube, current_expr, poper, op, func_dir, current_func, pair);
+    }
+}
+
 fn visualize_pair(
     pair: pest::iterators::Pair<Rule>,
     context_stack: &mut Vec<Rule>,
     main_rules: &HashSet<Rule>,
     current_type: &mut String,
     func_dir: &mut HashMap<String, HashMap<String, String>>,
-    semantic_cube: &[[[&str; 4]; 2]; 2],
+    semantic_cube: &[[[&str; 8]; 2]; 2],
     context_ids: &mut Vec<String>,
-    current_func: &mut String
+    current_func: &mut String,
+    current_expr: &mut VecDeque<[&str; 4]>
 ) {
 
     // visualize current rule
@@ -75,6 +90,13 @@ fn visualize_pair(
                         // Add the parameter ID to the contex_ids stack
                         context_ids.push(pair.as_str().to_string());
                     },
+                    Rule::statement => {
+                        if func_dir.get_mut(current_func).unwrap().contains_key(pair.as_str()) {
+                            println!("ACTION: Search for id-name in current VarTable");
+                        } else {
+                            panic!("Error: id '{}' not found in current context", pair.as_str());
+                        }
+                    }
                     _ => println!("id in another context."),
                 }
             }
@@ -98,6 +120,16 @@ fn visualize_pair(
                 }
             }
             println!("{:#?}", func_dir);
+        },
+        Rule::beginKeyword => {
+            println!("ACTION: Changing back to the global context \n");
+            *current_func = "global".to_string();
+        },
+        Rule::statement => {
+            let mut poper: Vec<char> = Vec::new();
+            let mut op: Vec<[String; 2]> = Vec::new();
+            let quads = generate_quads(semantic_cube, current_expr, &mut poper, &mut op, &func_dir, current_func, &pair);
+            println!("{:#?}", quads);
         }
         _ => {
             println!("... \n");
@@ -117,7 +149,8 @@ fn visualize_pair(
             func_dir,
             semantic_cube,
             context_ids,
-            current_func
+            current_func,
+            current_expr
         );
     }
 
@@ -129,18 +162,18 @@ fn visualize_pair(
 }
 
 fn main() {
-    let path = "app1.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     // Create semantic cube that will tell us what type of data will be returned when performing an operation
     let semantic_cube = [
         [ // Left operand is int (0)
-            ["int", "float", "int", "float"],  // Right operand int (0) for +, -, *, /
-            ["float", "float", "float", "float"], // Right operand float (1) for +, -, *, /
+            ["int", "float", "int", "float", "int", "int", "int", "int"],  // Right operand int (0) for +, -, *, /, >, <, ==, !=
+            ["float", "float", "float", "float", "int", "int", "int", "int"], // Right operand float (1) for +, -, *, /, >, <, ==, !=
         ],
         [ // Left operand is float (1)
-            ["float", "float", "float", "float"], // Right operand int (0) for +, -, *, /
-            ["float", "float", "float", "float"], // Right operand float (1) for +, -, *, /
+            ["float", "float", "float", "float", "int", "int", "int", "int"], // Right operand int (0) for +, -, *, /, >, <, ==, !=
+            ["float", "float", "float", "float", "int", "int", "int", "int"], // Right operand float (1) for +, -, *, /, >, <, ==, !=
         ],
     ];
 
@@ -150,7 +183,8 @@ fn main() {
     let mut context_stack: Vec<Rule> = Vec::new();
     let mut context_ids: Vec<String> = Vec::new();
     let mut current_func: String = String::new();
-    let main_rules: HashSet<Rule> = [Rule::program, Rule::vars, Rule::funcs, Rule::funcs, Rule::parameters]
+    let mut current_expr: VecDeque<[&str; 4]> = VecDeque::new();
+    let main_rules: HashSet<Rule> = [Rule::program, Rule::vars, Rule::funcs, Rule::funcs, Rule::parameters, Rule::statement]
         .iter()
         .cloned()
         .collect();
@@ -167,7 +201,8 @@ fn main() {
                     &mut func_dir,
                     &semantic_cube,
                     &mut context_ids,
-                    &mut current_func
+                    &mut current_func,
+                    &mut current_expr
                 );
             }
             println!("{:#?}", func_dir);

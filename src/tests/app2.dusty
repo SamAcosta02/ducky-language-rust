@@ -1,0 +1,9 @@
+program testing_expressions;
+
+vars a,b,d,f,g,h,j,i,l: int; c,e,m: float;
+
+begin
+{
+  a = b + c * (d - e/f) + g > h * (j - i/l) + m;
+}
+end

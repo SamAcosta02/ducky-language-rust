@@ -7,7 +7,6 @@ void some_other_func(k:int, z:float) {};
 
 begin 
 {
-  age = 15;
-  height = 1.71;
+  age = 10;
 }
 end
