@@ -71,6 +71,7 @@ fn visualize_pair(
     // visualize current rule
     let current_rule = pair.as_rule();
     println!("Rule: {:#?}", current_rule);
+    println!("Jumps: {:?}", &quad_stack.jumps);
     // println!("{:#?}", pair.as_str());
 
     // Push the current rule to the context stack, if it is a main rule
@@ -175,7 +176,12 @@ fn visualize_pair(
             quad_stack.oper.push(pair.as_str().to_string());
         }
         Rule::term => {
-            println!(" - - expression action #4");
+            if quad_stack.o.len() > 1 && (quad_stack.oper.last() == Some(&"*".to_string()) || quad_stack.oper.last() == Some(&"/".to_string())) {
+                println!(" - - expression action #4 with * or /");
+            }
+            if quad_stack.o.len() > 1 && (quad_stack.oper.last() == Some(&"+".to_string()) || quad_stack.oper.last() == Some(&"-".to_string())) {
+                println!(" - - expression action #4 with + or -");
+            }
             // println!("qud stack: {:?}", &quad_stack);
             // let right_operand = quad_stack.o.pop().unwrap();
             // println!("- - - - right operand: {:?}", &right_operand);
@@ -226,7 +232,7 @@ fn visualize_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app2.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     // Create semantic cube that will tell us what type of data will be returned when performing an operation
