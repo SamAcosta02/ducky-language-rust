@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, fs};
+use std::{collections::{HashMap, VecDeque}, fs};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -11,29 +11,29 @@ pub struct DustyParser;
 enum Stage {
     Before,
     During,
-    After
+    After,
+    Finished,
 }
 
 #[derive(Debug)]
 struct DustyContext {
     func_dir: HashMap<String, HashMap<String, String>>, // Function-variable scope directory
-    current_func: String, // Current function name (knowing the current scope)
-    id_rules: HashSet<Rule>, // Main rules that have actions triggered by ids
-    id_context: Vec<Rule>, // Know what is the parent rule
-    id_stack: Vec<String> // Stack of ids to add type (vars)
+    parent_rule: Rule,
+    current_type: String,
+    current_func: String,
+    id_stack: Vec<String>,
+    syntax_flow: VecDeque<Rule>
 }
 
 impl DustyContext {
-    fn new() -> Self {
+    fn new(syntax_tree: VecDeque<Rule>) -> Self {
         DustyContext {
             func_dir: HashMap::new(),
+            id_stack: Vec::new(),
+            parent_rule: Rule::program,
             current_func: String::new(),
-            id_rules: [Rule::program, Rule::vars, Rule::funcs, Rule::funcs, Rule::parameters]
-                .iter()
-                .cloned()
-                .collect(),
-            id_context: Vec::new(),
-            id_stack: Vec::new()
+            current_type: String::new(),
+            syntax_flow: syntax_tree
         }
     }
 
@@ -47,88 +47,89 @@ fn process_pair(
     stage: Stage,
     dusty_context: &mut DustyContext
 ) {
-    // visualize current rule
-    let current_rule = pair.as_rule();
-    println!("{:#?}", current_rule);
-    println!("{:#?}", pair.as_str());
-    println!("{:#?}", dusty_context.id_context);
-
-    // Push the current rule to the context stack, if it is a main rule
-    if dusty_context.id_rules.contains(&current_rule) && dusty_context.id_context.last() != Some(&current_rule) {
-        // println!("Rule: ++{:?}++ IS a main rule", current_rule);
-        dusty_context.id_context.push(current_rule);
-    } else {
-        // println!("Rule: **{:?}** not a main rule", current_rule);
-    }
+    println!("Processing rule: {:#?} in stage {:#?}, parent rule: {:#?}, line: {:#?}, col: {:#?}",
+        pair.as_rule(), stage, dusty_context.parent_rule,
+        pair.as_span().start_pos().line_col().0,
+        pair.as_span().start_pos().line_col().1
+    );
 
     match (pair.as_rule(), &stage) {
-        // Process program keyword
-        (Rule::program, Stage::Before) => {
-            println!("Adding the global function to the directory...");
-            dusty_context.current_func = "global".to_string();
-            process_pair(pair.clone(), Stage::During, dusty_context);
-        }
-
-        // Process identifiers
+        // Process ID --------------------------------------
         (Rule::id, Stage::Before) => {
-            println!("ID before...");
-            process_pair(pair.clone(), Stage::During, dusty_context);
+            println!("Token ID found: {:#?}", pair.as_str());
+            process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::id, Stage::During) => {
-            if let Some(&parent_rule) = dusty_context.id_context.iter().rev().next() {
-                match parent_rule {
-                    Rule::program => {
-                        println!("ID action during (adding the global function to the directory)...");
-                        dusty_context.func_dir.insert(dusty_context.current_func.clone(), HashMap::new());
-                    }
-                    Rule::vars => {
-                        println!("ID action during (adding the variable to the function)...");
-                        // Look for the id in the current function
-                        // If it is panic as it is already declared
-                        if dusty_context.contains_id(pair.as_str()) {
-                            panic!("ERROR: id {} already exists in current context (vars)", pair.as_str());
-                        // otherwise insert the id to the context-ids stack (to later add them to the dir_func)
-                        } else {
-                            println!("ACTION: Add id-name to context-ids to later add them to dir_func \n");
-                            dusty_context.id_stack.push(pair.as_str().to_string());
-                        }
-                    }
-                    _ => {
-                        println!("ID during...");
-                    }
+            match dusty_context.parent_rule {
+                Rule::program => {
+                    println!("Adding global scope to function directory"); // #1 Add global scope during program name
+                    dusty_context.func_dir.insert("global".to_string(), HashMap::new());
+                    dusty_context.current_func = "global".to_string();
                 }
+                Rule::vars => {
+                    println!("Adding variable stack to add to directory after knowing its type"); // #2 Add variable to stack at ID in VARS
+                    dusty_context.id_stack.push(pair.as_str().to_string());                  
+                }
+                _ => {}
             }
-            process_pair(pair.clone(), Stage::After, dusty_context);
+            process_pair(pair, Stage::After, dusty_context);
         }
+        (Rule::id, Stage::After) => {
+            println!("\n");
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process ID --------------------------------------
 
-        // Process typeVar (After a list of ids, or id)
+        // Process Vars ------------------------------------
+        (Rule::vars, Stage::Before) => {
+            println!("Sintactic rule VARS found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::vars;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::vars, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::vars, Stage::After) => {
+            println!("func_dir after vars: {:#?}", dusty_context.func_dir);
+            println!("\n");
+            dusty_context.parent_rule = Rule::program;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process Vars ------------------------------------
+
+        // Process typeVar ---------------------------------
         (Rule::typeVar, Stage::Before) => {
-            println!("TypeVar before...");
-            process_pair(pair.clone(), Stage::During, dusty_context);
+            println!("Sintactic rule TYPEVAR found: {:#?}", pair.as_str());
+            dusty_context.current_type = pair.as_str().to_string();
+            process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::typeVar, Stage::During) => {
+            println!("ID stack: {:#?}", dusty_context.id_stack);
             println!("Add all pending ids to the current scope and set them to current type");
             while let Some(id) = dusty_context.id_stack.pop() {
                 if dusty_context.contains_id(&id) {
                     panic!("ERROR: id {} already exists in current context (typevar)", id);
                 } else {
-                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().insert(id, pair.as_str().to_string());
+                    println!("Adding id {} to {} as {}", id, dusty_context.current_func, dusty_context.current_type);
+                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().insert(id.clone(), dusty_context.current_type.clone());
                 }
             }
+            println!("func_dir: {:#?}", dusty_context.func_dir);
+            process_pair(pair, Stage::After, dusty_context);
         }
-
-        // Process vars
-        (Rule::vars, Stage::Before) => {
-            println!("Vars before...");
-            process_pair(pair.clone(), Stage::During, dusty_context);
+        (Rule::typeVar, Stage::After) => {
+            println!("\n");
+            process_pair(pair, Stage::Finished, dusty_context);
         }
-
-        // Process begin keyword
-        (Rule::beginKeyword, Stage::Before) => {
-            println!("Begin before...");
-            dusty_context.current_func = "global".to_string();
-            process_pair(pair.clone(), Stage::During, dusty_context);
-        }
+        // Process typeVar ---------------------------------
 
         // Anything else (move on to the next pair)
         _ => {
@@ -149,18 +150,21 @@ fn main() {
     let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
-    let mut dusty_context = DustyContext::new();
+    let mut dusty_context = DustyContext::new(VecDeque::new());
 
     match DustyParser::parse(Rule::program, &patito_file) {
         Ok(pairs) => {
+            let test = pairs.collect::<Vec<_>>();
+            println!("context_pairs: {:#?}", test);
+            // dusty_context.syntax_flow = context_pairs;
             // Go through the AST and trigger actions in certain parts
-            for pair in pairs {
-                process_pair(
-                    pair,
-                    Stage::Before,
-                    &mut dusty_context
-                );
-            }
+            // for pair in pairs {
+            //     process_pair(
+            //         pair,
+            //         Stage::Before,
+            //         &mut dusty_context
+            //     );
+            // }
         }
         Err(e) => {
             println!("Error: {:#?}", e);

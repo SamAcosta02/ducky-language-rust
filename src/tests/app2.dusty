@@ -1,9 +1,9 @@
 program testing_expressions;
 
-vars a,b,d,f,g,h,j,i,l: int; c,e,m: float;
+vars a,b,c: int;
 
 begin
 {
-  a = b + f;
+  a = b + c;
 }
 end
