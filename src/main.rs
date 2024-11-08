@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::{HashMap, VecDeque}, fs};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -15,6 +15,10 @@ enum Stage {
     Finished,
 }
 
+struct QuadData {
+    
+}
+
 #[derive(Debug)]
 struct DustyContext {
     func_dir: HashMap<String, HashMap<String, String>>, // Function-variable scope directory
@@ -22,6 +26,7 @@ struct DustyContext {
     current_type: String,
     current_func: String,
     id_stack: Vec<String>,
+    quadruples: VecDeque<[String; 4]>,
 }
 
 impl DustyContext {
@@ -32,6 +37,7 @@ impl DustyContext {
             parent_rule: Rule::program,
             current_func: String::new(),
             current_type: String::new(),
+            quadruples: VecDeque::new(),
         }
     }
 
@@ -45,8 +51,8 @@ fn process_pair(
     stage: Stage,
     dusty_context: &mut DustyContext
 ) {
-    println!("Processing rule: {:#?} in stage {:#?}, parent rule: {:#?}, line: {:#?}, col: {:#?}",
-        pair.as_rule(), stage, dusty_context.parent_rule,
+    println!("Processing rule: {:#?} in stage {:#?}, parent rule: {:#?}, currrent func: {:#?}, line: {:#?}, col: {:#?}",
+        pair.as_rule(), stage, dusty_context.parent_rule, dusty_context.current_func,
         pair.as_span().start_pos().line_col().0,
         pair.as_span().start_pos().line_col().1
     );
@@ -77,7 +83,13 @@ fn process_pair(
                     println!("  Adding ID to stack to add to directory after knowing its type"); // #4 Add ID to stack at ID_LIST
                     dusty_context.id_stack.push(pair.as_str().to_string());
                 }
-                _ => {}
+                _ => {
+                    if !dusty_context.contains_id(pair.as_str()) {
+                        panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
+                    } else {
+                        println!("  ID \"{}\" was found in current context", pair.as_str());
+                    }
+                }
             }
             process_pair(pair, Stage::After, dusty_context);
         }
@@ -198,6 +210,7 @@ fn process_pair(
         }
         // Process parameters ------------------------------
 
+
         // Process id_type_list ----------------------------
         (Rule::id_type_list, Stage::Before) => {
             println!("  Sintactic rule ID_TYPE_LIST found: {:#?}", pair.as_str());
@@ -221,6 +234,200 @@ fn process_pair(
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process id_type_list ----------------------------
+
+
+        // Process body ------------------------------------
+        (Rule::body, Stage::Before) => {
+            println!("  Sintactic rule BODY found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::body;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::body, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::body, Stage::After) => {
+            println!("\n");
+            dusty_context.parent_rule = Rule::program;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process body ------------------------------------
+
+
+        // Process statement -------------------------------
+        (Rule::statement, Stage::Before) => {
+            println!("\n");
+            println!("  Sintactic rule STATEMENT found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::statement;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::statement, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::statement, Stage::After) => {
+            dusty_context.parent_rule = Rule::body;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process statement -------------------------------
+
+
+        // Process assignment ------------------------------
+        (Rule::assign, Stage::Before) => {
+            println!("  Sintactic rule ASSIGNMENT found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::assign;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::assign, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::assign, Stage::After) => {
+            dusty_context.parent_rule = Rule::statement;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process assignment ------------------------------
+
+
+        // Process expression ------------------------------
+        (Rule::expression, Stage::Before) => {
+            println!("  Sintactic rule EXPRESSION found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::expression;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::expression, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::expression, Stage::After) => {
+            dusty_context.parent_rule = Rule::assign;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process expression ------------------------------
+
+
+        // Process exp -------------------------------------
+        (Rule::exp, Stage::Before) => {
+            println!("  Sintactic rule EXPRESSION found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::term;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::exp, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::exp, Stage::After) => {
+            dusty_context.parent_rule = Rule::expression;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process exp -------------------------------------
+
+
+        // Process term ------------------------------------
+        (Rule::term, Stage::Before) => {
+            println!("  Sintactic rule TERM found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::term;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::term, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::term, Stage::After) => {
+            dusty_context.parent_rule = Rule::exp;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process term ------------------------------------
+        
+
+        // Process factor ----------------------------------
+        (Rule::factor, Stage::Before) => {
+            println!("  Sintactic rule FACTOR found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::factor;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::factor, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::factor, Stage::After) => {
+            dusty_context.parent_rule = Rule::term;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process factor ----------------------------------
+
+
+        // Process value -----------------------------------
+        (Rule::value, Stage::Before) => {
+            println!("  Sintactic rule VALUE found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::value;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::value, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::value, Stage::After) => {
+            dusty_context.parent_rule = Rule::factor;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process value -----------------------------------
 
 
         // Anything else (move on to the next pair)

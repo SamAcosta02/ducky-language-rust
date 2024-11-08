@@ -7,6 +7,6 @@ void some_other_func(k:int, z:float) {};
 
 begin 
 {
-  age = 10;
+  age = years + 1;
 }
 end
