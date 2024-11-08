@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, fs};
+use std::{collections::HashMap, fs};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -22,18 +22,16 @@ struct DustyContext {
     current_type: String,
     current_func: String,
     id_stack: Vec<String>,
-    syntax_flow: VecDeque<Rule>
 }
 
 impl DustyContext {
-    fn new(syntax_tree: VecDeque<Rule>) -> Self {
+    fn new() -> Self {
         DustyContext {
             func_dir: HashMap::new(),
             id_stack: Vec::new(),
             parent_rule: Rule::program,
             current_func: String::new(),
             current_type: String::new(),
-            syntax_flow: syntax_tree
         }
     }
 
@@ -131,40 +129,48 @@ fn process_pair(
         }
         // Process typeVar ---------------------------------
 
-        // Anything else (move on to the next pair)
-        _ => {
-            println!("...");
-            for inner_pair in pair.into_inner() {
+        // Process id_list ---------------------------------
+        (Rule::id_list, Stage::Before) => {
+            println!("Sintactic rule ID_LIST found: {:#?}", pair.as_str());
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
                 process_pair(
                     inner_pair,
                     Stage::Before,
                     dusty_context
                 );
             }
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process id_list ---------------------------------
+
+        // Anything else (move on to the next pair)
+        _ => {
+            println!("...");
         }
     }
 }
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
-    let mut dusty_context = DustyContext::new(VecDeque::new());
+    let mut dusty_context = DustyContext::new();
 
     match DustyParser::parse(Rule::program, &patito_file) {
         Ok(pairs) => {
-            let test = pairs.collect::<Vec<_>>();
-            println!("context_pairs: {:#?}", test);
+            // println!("{:#?}", pairs.into_iter().next().unwrap().into_inner());
             // dusty_context.syntax_flow = context_pairs;
             // Go through the AST and trigger actions in certain parts
-            // for pair in pairs {
-            //     process_pair(
-            //         pair,
-            //         Stage::Before,
-            //         &mut dusty_context
-            //     );
-            // }
+            for pair in pairs.into_iter().next().unwrap().into_inner() {
+                process_pair(
+                    pair,
+                    Stage::Before,
+                    &mut dusty_context
+                );
+                // println!("{:#?}", pair.as_rule());
+            }
         }
         Err(e) => {
             println!("Error: {:#?}", e);
