@@ -1,0 +1,9 @@
+program testing_expressions;
+
+vars a,b,c,d: int;
+
+begin
+{
+  a = b + c * d;
+}
+end

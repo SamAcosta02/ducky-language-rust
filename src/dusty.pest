@@ -17,7 +17,7 @@ func_call = { id ~ "(" ~ expression ~ ("," ~ expression)* ~ ")" ~ delimiter }
 print = { printKeyword ~ "(" ~ print_element ~ ("," ~ print_element)* ~ ")" ~ delimiter }
 print_element = { expression | string }
 
-assign = { id ~ "=" ~ expression ~ delimiter }
+assign = { id ~ equals ~ expression ~ delimiter }
 expression = { exp ~ (comparator ~ exp)? }
 exp = { term ~ (sign ~ exp)* }
 term = { factor ~ (operator ~ term)* }
@@ -45,6 +45,7 @@ typeVar = { "int" | "float" }
 comparator = { "==" | "!=" | "<" | ">" }
 sign = { "+" | "-" }
 operator = { "*" | "/" }
+equals = { "=" }
 programKeyword = { "program" }
 beginKeyword = { "begin" }
 endKeyword = { "end" }
