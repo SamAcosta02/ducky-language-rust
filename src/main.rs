@@ -15,8 +15,21 @@ enum Stage {
     Finished,
 }
 
+#[derive(Debug)]
 struct QuadData {
-    
+    operator_stack: Vec<String>,
+    operand_stack: Vec<[String; 2]>,
+    quad_counter: i32,
+}
+
+impl QuadData {
+    fn new() -> Self {
+        QuadData {
+            operator_stack: Vec::new(),
+            operand_stack: Vec::new(),
+            quad_counter: 1,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -26,6 +39,7 @@ struct DustyContext {
     current_type: String,
     current_func: String,
     id_stack: Vec<String>,
+    quad_data: QuadData,
     quadruples: VecDeque<[String; 4]>,
 }
 
@@ -37,12 +51,40 @@ impl DustyContext {
             parent_rule: Rule::program,
             current_func: String::new(),
             current_type: String::new(),
+            quad_data: QuadData::new(),
             quadruples: VecDeque::new(),
         }
     }
 
     fn contains_id(&self, id: &str) -> bool {
         self.func_dir.get(&self.current_func).unwrap().contains_key(id)
+    }
+    
+    fn top_is_multiplication_or_division(&self) -> bool {
+        self.quad_data.operator_stack.last() == Some(&String::from("*")) || self.quad_data.operator_stack.last() == Some(&String::from("/"))
+    }
+
+    fn top_is_addition_or_subtraction(&self) -> bool {
+        self.quad_data.operator_stack.last() == Some(&String::from("+")) || self.quad_data.operator_stack.last() == Some(&String::from("-"))
+    }
+
+    fn generate_quad(&mut self) {
+        let right_operand = self.quad_data.operand_stack.pop()
+            .expect("ERROR: Missing right operand");
+        let left_operand = self.quad_data.operand_stack.pop()
+            .expect("ERROR: Missing left operand");
+        let operator = self.quad_data.operator_stack.pop()
+            .expect("ERROR: Missing operator");
+
+        let result = format!("t{}", self.quad_data.quad_counter);
+        self.quadruples.push_back([
+            operator,
+            left_operand[0].clone(),
+            right_operand[0].clone(),
+            result.clone()
+        ]);
+        self.quad_data.quad_counter += 1;
+        self.quad_data.operand_stack.push([result.clone(), right_operand[1].clone()]);
     }
 }
 
@@ -94,6 +136,17 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::id, Stage::After) => {
+            match dusty_context.parent_rule {
+                Rule::value => {
+                    println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
+                    dusty_context.quad_data.operand_stack.push([
+                        pair.as_str().to_string(),
+                        dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string()
+                        ]);
+                        println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+                }
+                _ => {}
+            }
             println!("\n");
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -353,6 +406,11 @@ fn process_pair(
         }
         (Rule::exp, Stage::After) => {
             dusty_context.parent_rule = Rule::expression;
+            if dusty_context.top_is_addition_or_subtraction() {
+                println!("  (#4) Execute #4 with + or -");
+                dusty_context.generate_quad();
+            }
+            println!("  {:#?}", dusty_context.quad_data);
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process exp -------------------------------------
@@ -376,6 +434,10 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::term, Stage::After) => {
+            if dusty_context.top_is_multiplication_or_division() {
+                println!("  (#5) Execute #4 with * or /");
+                dusty_context.generate_quad();
+            }
             dusty_context.parent_rule = Rule::exp;
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -430,6 +492,77 @@ fn process_pair(
         // Process value -----------------------------------
 
 
+        // Process operator --------------------------------
+        (Rule::operator, Stage::Before) => {
+            println!("  token OPERATOR found: {:#?}", pair.as_str());
+            println!("  (#2) Push operator to operator stack");
+            dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process operator --------------------------------
+
+
+        // Process sign ------------------------------------
+        (Rule::sign, Stage::Before) => {
+            println!("  token SIGN found: {:#?}", pair.as_str());
+            println!("  (#3) Push sign to operator stack");
+            dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process sign ------------------------------------
+
+
+        // Process cte -------------------------------------
+        (Rule::cte, Stage::Before) => {
+            println!("  Sintactic rule CTE found: {:#?}", pair.as_str());
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::cte, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::cte, Stage::After) => {
+            dusty_context.parent_rule = Rule::value;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process cte -------------------------------------
+
+        
+        // Process cte_int ---------------------------------
+        (Rule::cte_int, Stage::Before) => {
+            println!("  token CTE found: {:#?}", pair.as_str());
+            println!("  (#1) Adding CTE to operand stack in factor");
+            dusty_context.quad_data.operand_stack.push([
+                pair.as_str().to_string(),
+                "int".to_string()
+            ]);
+            println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process cte_int ---------------------------------
+
+
+        // Process cte_float -------------------------------
+        (Rule::cte_float, Stage::Before) => {
+            println!("  token CTE_FLOAT found: {:#?}", pair.as_str());
+            println!("  (#1) Adding CTE_FLOAT to operand stack in factor");
+            dusty_context.quad_data.operand_stack.push([
+                pair.as_str().to_string(),
+                "float".to_string()
+            ]);
+            println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process cte_float -------------------------------
+
+
         // Anything else (move on to the next pair)
         _ => {
             println!("...");
@@ -439,7 +572,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app1.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
@@ -464,4 +597,5 @@ fn main() {
     }
 
     println!("{:#?}", dusty_context.func_dir);
+    println!("{:?}", dusty_context.quadruples);
 }
