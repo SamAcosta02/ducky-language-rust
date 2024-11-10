@@ -4,6 +4,6 @@ vars a,b,c,d,e,f,g,h,i,j,l,m: int;
 
 begin
 {
-  a = b + c + d + e;
+  a = b+c*(d-e/f)+g > h*(j-i/l)+m;
 }
 end
