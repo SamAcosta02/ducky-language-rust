@@ -55,6 +55,6 @@ ifKeyword = { "if" }
 delimiter = { ";" }
 whileKeyword = { "while" }
 doKeyword = { "do" }
-printKeyword = { "print" }
+printKeyword = { "print!" }
 openP = { "(" }
 closeP = { ")" }

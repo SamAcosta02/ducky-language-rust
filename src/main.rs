@@ -113,6 +113,19 @@ impl DustyContext {
         ]);
     }
 
+    fn generate_print_quad(&mut self) {
+        let element = self.quad_data.operand_stack.last();
+        if element.is_none() {
+            panic!("ERROR: Missing element to print");
+        }
+        self.quadruples.push_back([
+            "print".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            element.unwrap()[0].clone()
+        ]);
+    }
+
     fn print_quadruples(&self) {
         for quad in &self.quadruples {
             println!("{:?}", quad);
@@ -380,6 +393,55 @@ fn process_pair(
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process statement -------------------------------
+
+
+        // Process print -----------------------------------
+        (Rule::print, Stage::Before) => {
+            println!("  Sintactic rule PRINT found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::print;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::print, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::print, Stage::After) => {
+            dusty_context.parent_rule = Rule::statement;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process print -----------------------------------
+
+
+        // Process print_element ---------------------------
+        (Rule::print_element, Stage::Before) => {
+            println!("  Sintactic rule PRINT_ELEMENT found: {:#?}", pair.as_str());
+            dusty_context.parent_rule = Rule::print_element;
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::print_element, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::print_element, Stage::After) => {
+            dusty_context.parent_rule = Rule::print;
+            dusty_context.generate_print_quad();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process print_element ---------------------------
 
 
         // Process assignment ------------------------------
@@ -681,7 +743,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app3.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
