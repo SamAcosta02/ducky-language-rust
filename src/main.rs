@@ -68,7 +68,17 @@ impl DustyContext {
         self.quad_data.operator_stack.last() == Some(&String::from("+")) || self.quad_data.operator_stack.last() == Some(&String::from("-"))
     }
 
-    fn generate_quad(&mut self) {
+    fn top_is_logical_operator(&self) -> bool {
+        self.quad_data.operator_stack.last() == Some(&String::from("==")) || self.quad_data.operator_stack.last() == Some(&String::from("!="))
+        || self.quad_data.operator_stack.last() == Some(&String::from(">")) || self.quad_data.operator_stack.last() == Some(&String::from("<"))
+    }
+
+    fn top_is_equals(&self) -> bool {
+        self.quad_data.operator_stack.last() == Some(&String::from("="))
+    }
+
+    fn generate_full_quad(&mut self) {
+        println!("{:?}",self.quad_data.operand_stack);
         let right_operand = self.quad_data.operand_stack.pop()
             .expect("ERROR: Missing right operand");
         let left_operand = self.quad_data.operand_stack.pop()
@@ -85,6 +95,12 @@ impl DustyContext {
         ]);
         self.quad_data.quad_counter += 1;
         self.quad_data.operand_stack.push([result.clone(), right_operand[1].clone()]);
+    }
+
+    fn print_quadruples(&self) {
+        for quad in &self.quadruples {
+            println!("{:?}", quad);
+        }
     }
 }
 
@@ -124,6 +140,17 @@ fn process_pair(
                 Rule::id_type_list => {
                     println!("  Adding ID to stack to add to directory after knowing its type"); // #4 Add ID to stack at ID_LIST
                     dusty_context.id_stack.push(pair.as_str().to_string());
+                }
+                Rule::assign => {
+                    // Quad generation
+                    if dusty_context.contains_id(pair.as_str()) {
+                        dusty_context.quad_data.operand_stack.push([
+                            pair.as_str().to_string(),
+                            dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string()
+                        ]);
+                    } else {
+                        panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
+                    }
                 }
                 _ => {
                     if !dusty_context.contains_id(pair.as_str()) {
@@ -358,6 +385,11 @@ fn process_pair(
         }
         (Rule::assign, Stage::After) => {
             dusty_context.parent_rule = Rule::statement;
+            if dusty_context.top_is_equals() {
+                println!("  (#7) Execute #4 with =");
+                dusty_context.generate_full_quad();
+            }
+            println!("  {:#?}", dusty_context.quad_data);
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process assignment ------------------------------
@@ -382,6 +414,11 @@ fn process_pair(
         }
         (Rule::expression, Stage::After) => {
             dusty_context.parent_rule = Rule::assign;
+            if dusty_context.top_is_logical_operator() {
+                println!("  (#6) Execute #4 with >, <, == or !=");
+                dusty_context.generate_full_quad();
+            }
+            println!("  {:#?}", dusty_context.quad_data);
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process expression ------------------------------
@@ -408,7 +445,7 @@ fn process_pair(
             dusty_context.parent_rule = Rule::expression;
             if dusty_context.top_is_addition_or_subtraction() {
                 println!("  (#4) Execute #4 with + or -");
-                dusty_context.generate_quad();
+                dusty_context.generate_full_quad();
             }
             println!("  {:#?}", dusty_context.quad_data);
             process_pair(pair, Stage::Finished, dusty_context);
@@ -436,8 +473,9 @@ fn process_pair(
         (Rule::term, Stage::After) => {
             if dusty_context.top_is_multiplication_or_division() {
                 println!("  (#5) Execute #4 with * or /");
-                dusty_context.generate_quad();
+                dusty_context.generate_full_quad();
             }
+            println!("  {:#?}", dusty_context.quad_data);
             dusty_context.parent_rule = Rule::exp;
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -505,11 +543,62 @@ fn process_pair(
         // Process sign ------------------------------------
         (Rule::sign, Stage::Before) => {
             println!("  token SIGN found: {:#?}", pair.as_str());
+            // if dusty_context.top_is_addition_or_subtraction() {
+            //     println!("  (#4) (Encountered +/- but there is at least 1)Execute #4 with + or -");
+            //     dusty_context.generate_full_quad();
+            // }
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::sign, Stage::During) => {
             println!("  (#3) Push sign to operator stack");
             dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process sign ------------------------------------
+
+
+        // Process logical_operator -------------------------
+        (Rule::comparator, Stage::Before) => {
+            println!("  token COMPARATOR found: {:#?}", pair.as_str());
+            println!("  (#4) Push logical operator to operator stack");
+            dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process logical_operator -------------------------
+
+        
+        // Process equals ----------------------------------
+        (Rule::equals, Stage::Before) => {
+            println!("  token EQUALS found: {:#?}", pair.as_str());
+            println!("  (#5) Push equals to operator stack");
+            dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process equals ----------------------------------
+
+
+        // Process open_parenthesis -------------------------
+        (Rule::openP, Stage::Before) => {
+            println!("  token OPEN_PARENTHESIS found: {:#?}", pair.as_str());
+            println!("  (#8) Push open parenthesis to operator stack");
+            dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process open_parenthesis -------------------------
+
+
+        // Process close_parenthesis ------------------------
+        (Rule::closeP, Stage::Before) => {
+            println!("  token CLOSE_PARENTHESIS found: {:#?}", pair.as_str());
+            println!("  (#9) pop stack");
+            // while dusty_context.quad_data.operator_stack.last() != Some(&String::from("(")) {
+            //     dusty_context.generate_full_quad();
+            // }
+            dusty_context.quad_data.operator_stack.pop();
+            println!("  {:#?}", dusty_context.quad_data.operator_stack);
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process close_parenthesis ------------------------
 
 
         // Process cte -------------------------------------
@@ -597,5 +686,5 @@ fn main() {
     }
 
     println!("{:#?}", dusty_context.func_dir);
-    println!("{:?}", dusty_context.quadruples);
+    dusty_context.print_quadruples();
 }

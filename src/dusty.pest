@@ -21,7 +21,7 @@ assign = { id ~ equals ~ expression ~ delimiter }
 expression = { exp ~ (comparator ~ exp)? }
 exp = { term ~ (sign ~ exp)* }
 term = { factor ~ (operator ~ term)* }
-factor = { ("(" ~ expression ~ ")") | value}
+factor = { (openP ~ expression ~ closeP) | value}
 value = { sign? ~ (id | cte) }
 cte = { cte_float | cte_int }
 
@@ -56,3 +56,5 @@ delimiter = { ";" }
 whileKeyword = { "while" }
 doKeyword = { "do" }
 printKeyword = { "print" }
+openP = { "(" }
+closeP = { ")" }
