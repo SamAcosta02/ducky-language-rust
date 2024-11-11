@@ -124,7 +124,7 @@ impl QuadData {
 #[derive(Debug)]
 struct DustyContext {
     func_dir: HashMap<String, HashMap<String, String>>, // Function-variable scope directory
-    parent_rule: Rule,
+    parent_rules: Vec<Rule>,
     current_type: String,
     current_func: String,
     id_stack: Vec<String>,
@@ -137,7 +137,7 @@ impl DustyContext {
         DustyContext {
             func_dir: HashMap::new(),
             id_stack: Vec::new(),
-            parent_rule: Rule::program,
+            parent_rules: vec![Rule::program],
             current_func: String::new(),
             current_type: String::new(),
             quad_data: QuadData::new(),
@@ -241,7 +241,7 @@ fn process_pair(
     dusty_context: &mut DustyContext
 ) {
     println!("Processing rule: {:#?} in stage {:#?}, parent rule: {:#?}, currrent func: {:#?}, line: {:#?}, col: {:#?}",
-        pair.as_rule(), stage, dusty_context.parent_rule, dusty_context.current_func,
+        pair.as_rule(), stage, dusty_context.parent_rules.last().unwrap(), dusty_context.current_func,
         pair.as_span().start_pos().line_col().0,
         pair.as_span().start_pos().line_col().1
     );
@@ -253,7 +253,7 @@ fn process_pair(
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::id, Stage::During) => {
-            match dusty_context.parent_rule {
+            match dusty_context.parent_rules.last().unwrap() {
                 Rule::program => {
                     println!("  Adding global scope to function directory"); // #1 Add global scope during program name
                     dusty_context.func_dir.insert("global".to_string(), HashMap::new());
@@ -294,7 +294,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::id, Stage::After) => {
-            match dusty_context.parent_rule {
+            match dusty_context.parent_rules.last().unwrap() {
                 Rule::value => {
                     println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
                     dusty_context.quad_data.operand_stack.push([
@@ -314,7 +314,7 @@ fn process_pair(
         // Process Vars ------------------------------------
         (Rule::vars, Stage::Before) => {
             println!("  Sintactic rule VARS found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::vars;
+            dusty_context.parent_rules.push(Rule::vars);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::vars, Stage::During) => {
@@ -331,7 +331,7 @@ fn process_pair(
         (Rule::vars, Stage::After) => {
             // println!("func_dir after vars: {:#?}", dusty_context.func_dir);
             // println!("\n");
-            dusty_context.parent_rule = Rule::program;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process Vars ------------------------------------
@@ -383,7 +383,7 @@ fn process_pair(
         // Process Functions -------------------------------
         (Rule::funcs, Stage::Before) => {
             println!("  Sintactic rule FUNCTION found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::funcs;
+            dusty_context.parent_rules.push(Rule::funcs);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::funcs, Stage::During) => {
@@ -399,7 +399,7 @@ fn process_pair(
         }
         (Rule::funcs, Stage::After) => {
             println!("\n");
-            dusty_context.parent_rule = Rule::program;
+            dusty_context.parent_rules.pop();
             dusty_context.current_func = "global".to_string();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -425,7 +425,7 @@ fn process_pair(
         // Process id_type_list ----------------------------
         (Rule::id_type_list, Stage::Before) => {
             println!("  Sintactic rule ID_TYPE_LIST found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::id_type_list;
+            dusty_context.parent_rules.push(Rule::id_type_list);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::id_type_list, Stage::During) => {
@@ -441,7 +441,7 @@ fn process_pair(
         }
         (Rule::id_type_list, Stage::After) => {
             println!("\n");
-            dusty_context.parent_rule = Rule::funcs;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process id_type_list ----------------------------
@@ -450,7 +450,7 @@ fn process_pair(
         // Process body ------------------------------------
         (Rule::body, Stage::Before) => {
             println!("  Sintactic rule BODY found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::body;
+            dusty_context.parent_rules.push(Rule::body);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::body, Stage::During) => {
@@ -466,7 +466,7 @@ fn process_pair(
         }
         (Rule::body, Stage::After) => {
             println!("\n");
-            dusty_context.parent_rule = Rule::program;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process body ------------------------------------
@@ -476,7 +476,7 @@ fn process_pair(
         (Rule::statement, Stage::Before) => {
             println!("\n");
             println!("  Sintactic rule STATEMENT found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::statement;
+            dusty_context.parent_rules.push(Rule::statement);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::statement, Stage::During) => {
@@ -491,16 +491,20 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::statement, Stage::After) => {
-            dusty_context.parent_rule = Rule::body;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process statement -------------------------------
+        
 
+        // Process if --------------------------------------
+
+        // Process if --------------------------------------
 
         // Process print -----------------------------------
         (Rule::print, Stage::Before) => {
             println!("  Sintactic rule PRINT found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::print;
+            dusty_context.parent_rules.push(Rule::print);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::print, Stage::During) => {
@@ -515,7 +519,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::print, Stage::After) => {
-            dusty_context.parent_rule = Rule::statement;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process print -----------------------------------
@@ -524,7 +528,7 @@ fn process_pair(
         // Process print_element ---------------------------
         (Rule::print_element, Stage::Before) => {
             println!("  Sintactic rule PRINT_ELEMENT found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::print_element;
+            dusty_context.parent_rules.push(Rule::print_element);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::print_element, Stage::During) => {
@@ -539,7 +543,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::print_element, Stage::After) => {
-            dusty_context.parent_rule = Rule::print;
+            dusty_context.parent_rules.pop();
             dusty_context.generate_print_quad();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -549,7 +553,7 @@ fn process_pair(
         // Process assignment ------------------------------
         (Rule::assign, Stage::Before) => {
             println!("  Sintactic rule ASSIGNMENT found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::assign;
+            dusty_context.parent_rules.push(Rule::assign);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::assign, Stage::During) => {
@@ -564,7 +568,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::assign, Stage::After) => {
-            dusty_context.parent_rule = Rule::statement;
+            dusty_context.parent_rules.pop();
             if dusty_context.top_is_equals() {
                 println!("  (#7) Execute #4 with =");
                 dusty_context.generate_assign_quad();
@@ -578,7 +582,7 @@ fn process_pair(
         // Process expression ------------------------------
         (Rule::expression, Stage::Before) => {
             println!("  Sintactic rule EXPRESSION found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::expression;
+            dusty_context.parent_rules.push(Rule::expression);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::expression, Stage::During) => {
@@ -593,7 +597,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::expression, Stage::After) => {
-            dusty_context.parent_rule = Rule::assign;
+            dusty_context.parent_rules.pop();
             if dusty_context.top_is_logical_operator() {
                 println!("  (#6) Execute #4 with >, <, == or !=");
                 dusty_context.generate_full_quad();
@@ -606,8 +610,8 @@ fn process_pair(
 
         // Process exp -------------------------------------
         (Rule::exp, Stage::Before) => {
-            println!("  Sintactic rule EXPRESSION found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::term;
+            println!("  Sintactic rule EXP found: {:#?}", pair.as_str());
+            dusty_context.parent_rules.push(Rule::exp);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::exp, Stage::During) => {
@@ -622,7 +626,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::exp, Stage::After) => {
-            dusty_context.parent_rule = Rule::expression;
+            dusty_context.parent_rules.pop();
             if dusty_context.top_is_addition_or_subtraction() {
                 println!("  (#4) Execute #4 with + or -");
                 dusty_context.generate_full_quad();
@@ -636,7 +640,7 @@ fn process_pair(
         // Process term ------------------------------------
         (Rule::term, Stage::Before) => {
             println!("  Sintactic rule TERM found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::term;
+            dusty_context.parent_rules.push(Rule::term);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::term, Stage::During) => {
@@ -656,7 +660,7 @@ fn process_pair(
                 dusty_context.generate_full_quad();
             }
             dusty_context.debug_quad_gen();
-            dusty_context.parent_rule = Rule::exp;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process term ------------------------------------
@@ -665,7 +669,7 @@ fn process_pair(
         // Process factor ----------------------------------
         (Rule::factor, Stage::Before) => {
             println!("  Sintactic rule FACTOR found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::factor;
+            dusty_context.parent_rules.push(Rule::factor);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::factor, Stage::During) => {
@@ -680,7 +684,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::factor, Stage::After) => {
-            dusty_context.parent_rule = Rule::term;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process factor ----------------------------------
@@ -689,7 +693,7 @@ fn process_pair(
         // Process value -----------------------------------
         (Rule::value, Stage::Before) => {
             println!("  Sintactic rule VALUE found: {:#?}", pair.as_str());
-            dusty_context.parent_rule = Rule::value;
+            dusty_context.parent_rules.push(Rule::value);
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::value, Stage::During) => {
@@ -704,7 +708,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::value, Stage::After) => {
-            dusty_context.parent_rule = Rule::factor;
+            dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process value -----------------------------------
@@ -802,7 +806,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::cte, Stage::After) => {
-            dusty_context.parent_rule = Rule::value;
+            // dusty_context.parent_rule = Rule::value;
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process cte -------------------------------------
