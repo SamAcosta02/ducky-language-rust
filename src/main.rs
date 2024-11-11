@@ -106,7 +106,9 @@ impl SemanticCube {
 struct QuadData {
     operator_stack: Vec<String>,
     operand_stack: Vec<[String; 2]>,
-    quad_counter: i32,
+    jump_stack: Vec<usize>,
+    quad_counter: usize,
+    temp_counter: usize,
     semantic_cube: SemanticCube,
 }
 
@@ -115,7 +117,9 @@ impl QuadData {
         QuadData {
             operator_stack: Vec::new(),
             operand_stack: Vec::new(),
+            jump_stack: Vec::new(),
             quad_counter: 1,
+            temp_counter: 1,
             semantic_cube: SemanticCube::new(),
         }
     }
@@ -179,7 +183,7 @@ impl DustyContext {
             panic!("ERROR: Type mismatch. Cannot use {} with {} and {}.", operator, left_operand[1], right_operand[1]);
         }
 
-        let result = format!("t{}", self.quad_data.quad_counter);
+        let result = format!("t{}", self.quad_data.temp_counter);
         self.quadruples.push_back([
             operator,
             left_operand[0].clone(),
@@ -187,6 +191,7 @@ impl DustyContext {
             result.clone()
         ]);
         self.quad_data.quad_counter += 1;
+        self.quad_data.temp_counter += 1;
         self.quad_data.operand_stack.push([result.clone(), right_operand[1].clone()]);
     }
 
@@ -208,6 +213,7 @@ impl DustyContext {
             "_".to_string(),
             left_operand[0].clone()
         ]);
+        self.quad_data.quad_counter += 1;
     }
 
     fn generate_print_quad(&mut self) {
@@ -221,6 +227,18 @@ impl DustyContext {
             "_".to_string(),
             element.unwrap()[0].clone()
         ]);
+        self.quad_data.quad_counter += 1;
+    }
+
+    fn generate_gotof_quad(&mut self) {
+        self.quadruples.push_back([
+            "gotof".to_string(),
+            format!("t{}", self.quad_data.temp_counter - 1),
+            "_".to_string(),
+            "_".to_string()
+        ]);
+        self.quad_data.jump_stack.push(self.quad_data.quad_counter);
+        self.quad_data.quad_counter += 1;
     }
 
     fn print_quadruples(&self) {
@@ -232,6 +250,8 @@ impl DustyContext {
     fn debug_quad_gen(&self) {
         println!("  Operator stack: {:?}", self.quad_data.operator_stack);
         println!("  Operand stack: {:?}", self.quad_data.operand_stack);
+        println!("  Jump stack: {:?}", self.quad_data.jump_stack);
+        println!("  temp counter: {}, quad_counter: {}", self.quad_data.temp_counter, self.quad_data.quad_counter);
     }
 }
 
@@ -498,8 +518,28 @@ fn process_pair(
         
 
         // Process if --------------------------------------
-
+        (Rule::condition, Stage::Before) => {
+            println!("  Sintactic rule CONDITION found: {:#?}", pair.as_str());
+            dusty_context.parent_rules.push(Rule::condition);
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::condition, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::condition, Stage::After) => {
+            dusty_context.parent_rules.pop();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
         // Process if --------------------------------------
+
 
         // Process print -----------------------------------
         (Rule::print, Stage::Before) => {
@@ -771,8 +811,16 @@ fn process_pair(
         // Process open_parenthesis -------------------------
         (Rule::openP, Stage::Before) => {
             println!("  token OPEN_PARENTHESIS found: {:#?}", pair.as_str());
-            println!("  (#8) Push open parenthesis to operator stack");
-            dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::openP, Stage::During) => {
+            match dusty_context.parent_rules.last().unwrap() {
+                Rule::factor => {
+                    println!("  (#6) Push open parenthesis to operator stack");
+                    dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
+                }
+                _ => {}
+            }
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process open_parenthesis -------------------------
@@ -781,9 +829,21 @@ fn process_pair(
         // Process close_parenthesis ------------------------
         (Rule::closeP, Stage::Before) => {
             println!("  token CLOSE_PARENTHESIS found: {:#?}", pair.as_str());
-            println!("  (#9) pop stack");
-            dusty_context.quad_data.operator_stack.pop();
-            println!("  {:#?}", dusty_context.quad_data.operator_stack);
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::closeP, Stage::During) => {
+            match dusty_context.parent_rules.last().unwrap() {
+                Rule::factor => {
+                    println!("  (#9) pop stack");
+                    dusty_context.quad_data.operator_stack.pop();
+                    println!("  {:#?}", dusty_context.quad_data.operator_stack);
+                }
+                Rule::condition => {
+                    println!("  (#12) Generate incomplete GOTOF quad and push to jump stack");
+                    dusty_context.generate_gotof_quad();
+                }
+                _ => {}
+            }
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process close_parenthesis ------------------------
@@ -840,6 +900,23 @@ fn process_pair(
         // Process cte_float -------------------------------
 
 
+        // Process delimiter -------------------------------
+        (Rule::delimiter, Stage::Before) => {
+            println!("  token DELIMITER found: {:#?}", pair.as_str());
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::delimiter, Stage::During) => {
+            match dusty_context.parent_rules.last().unwrap() {
+                Rule::condition => {
+                    println!("  (#13) Complete GOTOF quad");
+                }
+                _ => {}
+            }
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process delimiter -------------------------------
+
+
         // Anything else (move on to the next pair)
         _ => {
             println!("...");
@@ -849,7 +926,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app4.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();

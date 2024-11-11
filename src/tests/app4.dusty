@@ -1,0 +1,12 @@
+program testing_if;
+
+vars a,b,c,d,e: int;
+
+begin
+{
+  if (a < b) {
+    a = b + d;
+  };
+  b = a * c + d;
+}
+end
