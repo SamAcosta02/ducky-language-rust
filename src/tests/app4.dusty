@@ -1,0 +1,14 @@
+program testing_if;
+
+vars a,b,c,d,e: int;
+
+begin
+{
+  if ((a < b) > (c * d)) {
+    a = b + d;
+  } else {
+    a = d - c;
+  };
+  a = d - c;
+}
+end

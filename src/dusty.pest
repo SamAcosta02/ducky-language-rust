@@ -11,7 +11,7 @@ funcs = { voidKeyword ~ id ~ "(" ~ parameters? ~ ")" ~ body ~ delimiter }
 body = { "{" ~ statement* ~ "}" }
 
 statement = { assign | condition | while_loop | func_call | print }
-condition = { ifKeyword ~ "(" ~ expression ~ ")" ~ body ~ ("else" ~ body)? ~ delimiter }
+condition = { ifKeyword ~ openP ~ expression ~ closeP ~ body ~ (elseKeyword ~ body)? ~ delimiter }
 while_loop = { whileKeyword ~ "(" ~ expression ~ ")" ~ doKeyword ~ body ~ delimiter }
 func_call = { id ~ "(" ~ expression ~ ("," ~ expression)* ~ ")" ~ delimiter }
 print = { printKeyword ~ "(" ~ print_element ~ ("," ~ print_element)* ~ ")" ~ delimiter }
@@ -58,3 +58,4 @@ doKeyword = { "do" }
 printKeyword = { "print!" }
 openP = { "(" }
 closeP = { ")" }
+elseKeyword = { "else" }
