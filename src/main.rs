@@ -16,10 +16,98 @@ enum Stage {
 }
 
 #[derive(Debug)]
+struct SemanticCube {
+    cube: [[[String; 9]; 2]; 2],
+    string_to_usize: HashMap<String, usize>,
+}
+
+impl SemanticCube {
+    fn new() -> Self {
+        SemanticCube {
+            cube: [
+                // Left operand is int (0)
+                [
+                    [// Right operand int (0) for...
+                        String::from("int"),   // +
+                        String::from("int"),   // -
+                        String::from("int"),   // *
+                        String::from("float"), // /
+                        String::from("int"),   // <
+                        String::from("int"),   // >
+                        String::from("int"),   // ==
+                        String::from("int"),   // !=
+                        String::from("int"),   // =
+                    ],  
+                    [// Right operand float (1) for +, -, *, /
+                        String::from("float"), // +
+                        String::from("float"), // -
+                        String::from("float"), // *
+                        String::from("float"), // /
+                        String::from("error"),   // <
+                        String::from("error"),   // >
+                        String::from("error"),   // ==
+                        String::from("error"),   // !=
+                        String::from("error"),   // = 
+                    ],
+                ],
+                // Left operand is float (1)
+                [
+                    [// Right operand int (0) for...
+                        String::from("float"), // +
+                        String::from("float"), // -
+                        String::from("float"), // *
+                        String::from("float"), // /
+                        String::from("error"),   // <
+                        String::from("error"),   // >
+                        String::from("error"),   // ==
+                        String::from("error"),   // !=
+                        String::from("error"),   // =
+                    ],  
+                    [// Right operand float (1) for +, -, *, /
+                        String::from("float"), // +
+                        String::from("float"), // -
+                        String::from("float"), // *
+                        String::from("float"), // /
+                        String::from("int"),   // <
+                        String::from("int"),   // >
+                        String::from("int"),   // ==
+                        String::from("int"),   // !=
+                        String::from("int"),   // =
+                    ],
+                ],
+            ],
+            string_to_usize: {
+                let mut map = HashMap::new();
+                map.insert(String::from("int"), 0);
+                map.insert(String::from("float"), 1);
+                map.insert(String::from("+"), 0);
+                map.insert(String::from("-"), 1);
+                map.insert(String::from("*"),2);
+                map.insert(String::from("/"), 3);
+                map.insert(String::from("<"), 4);
+                map.insert(String::from(">"), 5);
+                map.insert(String::from("=="), 6);
+                map.insert(String::from("!="), 7);
+                map.insert(String::from("="), 8);
+                map
+            }
+        }
+    }
+
+    fn get_result_type(&self, left: &str, right: &str, operator: &str) -> String {
+        let left_usize = self.string_to_usize.get(left).unwrap();
+        let right_usize = self.string_to_usize.get(right).unwrap();
+        let operator_usize = self.string_to_usize.get(operator).unwrap();
+        self.cube[*left_usize][*right_usize][*operator_usize].clone()
+    }
+}
+
+#[derive(Debug)]
 struct QuadData {
     operator_stack: Vec<String>,
     operand_stack: Vec<[String; 2]>,
     quad_counter: i32,
+    semantic_cube: SemanticCube,
 }
 
 impl QuadData {
@@ -28,6 +116,7 @@ impl QuadData {
             operator_stack: Vec::new(),
             operand_stack: Vec::new(),
             quad_counter: 1,
+            semantic_cube: SemanticCube::new(),
         }
     }
 }
@@ -86,6 +175,10 @@ impl DustyContext {
         let operator = self.quad_data.operator_stack.pop()
             .expect("ERROR: Missing operator");
 
+        if self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator) == "error" {
+            panic!("ERROR: Type mismatch. Cannot use {} with {} and {}.", operator, left_operand[1], right_operand[1]);
+        }
+
         let result = format!("t{}", self.quad_data.quad_counter);
         self.quadruples.push_back([
             operator,
@@ -104,6 +197,10 @@ impl DustyContext {
             .expect("ERROR: Missing left operand");
         let operator = self.quad_data.operator_stack.pop()
             .expect("ERROR: Missing operator");
+
+        if self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator) == "error" {
+            panic!("ERROR: Type mismatch. Cannot assign {} to {}", right_operand[1], left_operand[1]);
+        }
 
         self.quadruples.push_back([
             operator,
@@ -130,6 +227,11 @@ impl DustyContext {
         for quad in &self.quadruples {
             println!("{:?}", quad);
         }
+    }
+
+    fn debug_quad_gen(&self) {
+        println!("  Operator stack: {:?}", self.quad_data.operator_stack);
+        println!("  Operand stack: {:?}", self.quad_data.operand_stack);
     }
 }
 
@@ -467,7 +569,7 @@ fn process_pair(
                 println!("  (#7) Execute #4 with =");
                 dusty_context.generate_assign_quad();
             }
-            println!("  {:#?}", dusty_context.quad_data);
+            dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process assignment ------------------------------
@@ -496,7 +598,7 @@ fn process_pair(
                 println!("  (#6) Execute #4 with >, <, == or !=");
                 dusty_context.generate_full_quad();
             }
-            println!("  {:#?}", dusty_context.quad_data);
+            dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process expression ------------------------------
@@ -525,7 +627,7 @@ fn process_pair(
                 println!("  (#4) Execute #4 with + or -");
                 dusty_context.generate_full_quad();
             }
-            println!("  {:#?}", dusty_context.quad_data);
+            dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process exp -------------------------------------
@@ -553,7 +655,7 @@ fn process_pair(
                 println!("  (#5) Execute #4 with * or /");
                 dusty_context.generate_full_quad();
             }
-            println!("  {:#?}", dusty_context.quad_data);
+            dusty_context.debug_quad_gen();
             dusty_context.parent_rule = Rule::exp;
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -743,7 +845,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app3.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
