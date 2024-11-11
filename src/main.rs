@@ -241,9 +241,27 @@ impl DustyContext {
         self.quad_data.quad_counter += 1;
     }
 
+    fn generate_goto_quad(&mut self) {
+        self.quadruples.push_back([
+            "goto".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            "_".to_string()
+        ]);
+        self.quad_data.jump_stack.push(self.quad_data.quad_counter);
+        self.quad_data.quad_counter += 1;
+    }
+
+    fn fill_jump(&mut self) {
+        let jump = self.quad_data.jump_stack.pop().unwrap();
+        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
+    }
+
     fn print_quadruples(&self) {
+        let mut counter = 1;
         for quad in &self.quadruples {
-            println!("{:?}", quad);
+            println!("{}) {:?}", counter, quad);
+            counter += 1;
         }
     }
 
@@ -539,6 +557,17 @@ fn process_pair(
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process if --------------------------------------
+
+
+        // Process elseKeyword -----------------------------
+        (Rule::elseKeyword, Stage::Before) => {
+            println!("  token rule ELSE found: {:#?}", pair.as_str());
+            dusty_context.fill_jump();
+            dusty_context.quad_data.jump_stack.push(dusty_context.quad_data.quad_counter);
+            dusty_context.generate_goto_quad();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process elseKeyword -----------------------------
 
 
         // Process print -----------------------------------
@@ -909,6 +938,7 @@ fn process_pair(
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::condition => {
                     println!("  (#13) Complete GOTOF quad");
+                    dusty_context.fill_jump();
                 }
                 _ => {}
             }
@@ -926,7 +956,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app4.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app4.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();

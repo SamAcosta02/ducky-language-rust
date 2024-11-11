@@ -4,9 +4,11 @@ vars a,b,c,d,e: int;
 
 begin
 {
-  if (a < b) {
+  if ((a < b) > (c * d)) {
     a = b + d;
+  } else {
+    a = d - c;
   };
-  b = a * c + d;
+  a = d - c;
 }
 end
