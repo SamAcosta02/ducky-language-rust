@@ -252,9 +252,29 @@ impl DustyContext {
         self.quad_data.quad_counter += 1;
     }
 
+    fn generate_gotow_quad(&mut self) {
+        self.quadruples.push_back([
+            "goto".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            "_".to_string()
+        ]);
+        self.quad_data.quad_counter += 1;
+    }
+
     fn fill_jump(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
         self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
+    }
+
+    fn fill_while_start(&mut self) {
+        let jump = self.quad_data.jump_stack.pop().unwrap();
+        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
+    }
+
+    fn fill_while_end(&mut self) {
+        let jump = self.quad_data.jump_stack.pop().unwrap();
+        self.quadruples[self.quad_data.quad_counter - 2][3] = format!("{}", jump);
     }
 
     fn print_quadruples(&self) {
@@ -563,7 +583,7 @@ fn process_pair(
         (Rule::doKeyword, Stage::Before) => {
             println!("  token DO found:");
             println!("  (#?) Generate GOTO quad to start of while loop");
-            dusty_context.generate_goto_quad();
+            dusty_context.generate_gotof_quad();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process doKeyword -------------------------------
@@ -977,6 +997,12 @@ fn process_pair(
                 Rule::condition => {
                     println!("  (#13) Complete GOTOF quad");
                     dusty_context.fill_jump();
+                }
+                Rule::while_loop => {
+                    println!("  (#?) Generate GOTO quad to start of while loop");
+                    dusty_context.fill_while_start();
+                    dusty_context.generate_gotow_quad();
+                    dusty_context.fill_while_end();
                 }
                 _ => {}
             }
