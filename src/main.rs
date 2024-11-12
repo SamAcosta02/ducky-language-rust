@@ -252,9 +252,29 @@ impl DustyContext {
         self.quad_data.quad_counter += 1;
     }
 
+    fn generate_gotow_quad(&mut self) {
+        self.quadruples.push_back([
+            "goto".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            "_".to_string()
+        ]);
+        self.quad_data.quad_counter += 1;
+    }
+
     fn fill_jump(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
         self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
+    }
+
+    fn fill_while_start(&mut self) {
+        let jump = self.quad_data.jump_stack.pop().unwrap();
+        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
+    }
+
+    fn fill_while_end(&mut self) {
+        let jump = self.quad_data.jump_stack.pop().unwrap();
+        self.quadruples[self.quad_data.quad_counter - 2][3] = format!("{}", jump);
     }
 
     fn print_quadruples(&self) {
@@ -533,6 +553,40 @@ fn process_pair(
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process statement -------------------------------
+
+
+        // Process while -----------------------------------
+        (Rule::while_loop, Stage::Before) => {
+            println!("  Sintactic rule WHILE found: {:#?}", pair.as_str());
+            dusty_context.parent_rules.push(Rule::while_loop);
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::while_loop, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::while_loop, Stage::After) => {
+            dusty_context.parent_rules.pop();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process while -----------------------------------
+
+
+        // Process doKeyword -------------------------------
+        (Rule::doKeyword, Stage::Before) => {
+            println!("  token DO found:");
+            println!("  (#?) Generate GOTO quad to start of while loop");
+            dusty_context.generate_gotof_quad();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process doKeyword -------------------------------
         
 
         // Process if --------------------------------------
@@ -848,6 +902,10 @@ fn process_pair(
                     println!("  (#6) Push open parenthesis to operator stack");
                     dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
                 }
+                Rule::while_loop => {
+                    println!("  (#?) Push to jump stack");
+                    dusty_context.quad_data.jump_stack.push(dusty_context.quad_data.quad_counter);
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
@@ -940,6 +998,12 @@ fn process_pair(
                     println!("  (#13) Complete GOTOF quad");
                     dusty_context.fill_jump();
                 }
+                Rule::while_loop => {
+                    println!("  (#?) Generate GOTO quad to start of while loop");
+                    dusty_context.fill_while_start();
+                    dusty_context.generate_gotow_quad();
+                    dusty_context.fill_while_end();
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
@@ -956,7 +1020,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app4.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app5.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
