@@ -108,6 +108,7 @@ struct QuadData {
     operand_stack: Vec<[String; 2]>,
     jump_stack: Vec<usize>,
     quad_counter: usize,
+    param_counter: usize,
     temp_counter: usize,
     semantic_cube: SemanticCube,
 }
@@ -119,6 +120,7 @@ impl QuadData {
             operand_stack: Vec::new(),
             jump_stack: Vec::new(),
             quad_counter: 1,
+            param_counter: 1,
             temp_counter: 1,
             semantic_cube: SemanticCube::new(),
         }
@@ -131,6 +133,7 @@ struct DustyContext {
     parent_rules: Vec<Rule>,
     current_type: String,
     current_func: String,
+    current_call: String,
     id_stack: Vec<String>,
     quad_data: QuadData,
     quadruples: VecDeque<[String; 4]>,
@@ -143,6 +146,7 @@ impl DustyContext {
             id_stack: Vec::new(),
             parent_rules: vec![Rule::program],
             current_func: String::new(),
+            current_call: String::new(),
             current_type: String::new(),
             quad_data: QuadData::new(),
             quadruples: VecDeque::new(),
@@ -151,6 +155,10 @@ impl DustyContext {
 
     fn contains_id(&self, id: &str) -> bool {
         self.func_dir.get(&self.current_func).unwrap().contains_key(id)
+    }
+
+    fn id_in_global_scope(&self, id: &str) -> bool {
+        self.func_dir.get("global").unwrap().contains_key(id)
     }
     
     fn top_is_multiplication_or_division(&self) -> bool {
@@ -262,6 +270,58 @@ impl DustyContext {
         self.quad_data.quad_counter += 1;
     }
 
+    fn generate_endfunc_quad(&mut self) {
+        self.quadruples.push_back([
+            "endfunc".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            "_".to_string()
+        ]);
+        self.quad_data.quad_counter += 1;
+    }
+
+    fn generate_era_quad(&mut self, func_name: &str) {
+        self.quadruples.push_back([
+            "era".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            func_name.to_string(),
+        ]);
+        self.quad_data.quad_counter += 1;
+    }
+
+    fn generate_param_quad(&mut self) {
+        let param = self.quad_data.operand_stack.last().unwrap();
+        self.quadruples.push_back([
+            "param".to_string(),
+            param[0].clone(),
+            "_".to_string(),
+            format!("param{}", self.quad_data.param_counter),
+        ]);
+        self.quad_data.quad_counter += 1;
+        self.quad_data.param_counter += 1;
+    }
+
+    fn generate_gosub_quad(&mut self) {
+        self.quadruples.push_back([
+            "gosub".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            self.current_call.to_string(),
+        ]);
+        self.quad_data.quad_counter += 1;
+    }
+
+    fn generate_end_quad(&mut self) {
+        self.quadruples.push_back([
+            "end".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+            "_".to_string(),
+        ]);
+        self.quad_data.quad_counter += 1;
+    }
+
     fn fill_jump(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
         self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
@@ -290,6 +350,7 @@ impl DustyContext {
         println!("  Operand stack: {:?}", self.quad_data.operand_stack);
         println!("  Jump stack: {:?}", self.quad_data.jump_stack);
         println!("  temp counter: {}, quad_counter: {}", self.quad_data.temp_counter, self.quad_data.quad_counter);
+        println!("  param counter: {}", self.quad_data.param_counter);
     }
 }
 
@@ -305,6 +366,15 @@ fn process_pair(
     );
 
     match (pair.as_rule(), &stage) {
+        // Process beginKeyword ----------------------------
+        (Rule::beginKeyword, Stage::Before) => {
+            println!("  token BEGIN found:");
+            println!("  Filling initial GOTO quad");
+            dusty_context.fill_jump();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process beginKeyword ----------------------------
+
         // Process ID --------------------------------------
         (Rule::id, Stage::Before) => {
             println!("  Token ID found: {:#?}", pair.as_str());
@@ -341,9 +411,19 @@ fn process_pair(
                         panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
                     }
                 }
+                Rule::func_call => {
+                    println!("  Generate GOSUB quad to call function"); // #8 Generate GOSUB quad to call function
+                    dusty_context.current_call = pair.as_str().to_string();
+                    dusty_context.generate_era_quad(pair.as_str());
+                }
                 _ => {
-                    if !dusty_context.contains_id(pair.as_str()) {
-                        panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
+                    if !dusty_context.contains_id(pair.as_str()) && !dusty_context.id_in_global_scope(pair.as_str()) {
+                        panic!("ERROR: ID \"{}\" not found in current context \"{}\", line: {}, col: {}",
+                            pair.as_str(),
+                            dusty_context.current_func,
+                            pair.as_span().start_pos().line_col().0,
+                            pair.as_span().start_pos().line_col().1
+                        );
                     } else {
                         println!("  ID \"{}\" was found in current context", pair.as_str());
                     }
@@ -354,12 +434,20 @@ fn process_pair(
         (Rule::id, Stage::After) => {
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::value => {
-                    println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
-                    dusty_context.quad_data.operand_stack.push([
-                        pair.as_str().to_string(),
-                        dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string()
+                    if dusty_context.contains_id(pair.as_str()) {
+                        println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
+                        dusty_context.quad_data.operand_stack.push([
+                            pair.as_str().to_string(),
+                            dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string()
                         ]);
-                        println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+                    } else {
+                        println!("  (#1) Adding global ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
+                        dusty_context.quad_data.operand_stack.push([
+                            pair.as_str().to_string(),
+                            dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap().to_string()
+                        ]);
+                    }
+                    println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
                 }
                 _ => {}
             }
@@ -408,7 +496,7 @@ fn process_pair(
                 if dusty_context.contains_id(&id) {
                     panic!("ERROR: id {} already exists in current context (typevar)", id);
                 } else {
-                    // println!("Adding id {} to {} as {}", id, dusty_context.current_func, dusty_context.current_type);
+                    println!("Adding id {} to {} as {}", id, dusty_context.current_func, dusty_context.current_type);
                     dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().insert(id.clone(), dusty_context.current_type.clone());
                 }
             }
@@ -478,6 +566,57 @@ fn process_pair(
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process parameters ------------------------------
+
+
+        // Process func_body -------------------------------
+        (Rule::func_body, Stage::Before) => {
+            println!("  Sintactic rule FUNC_BODY found: {:#?}", pair.as_str());
+            dusty_context.parent_rules.push(Rule::func_body);
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::func_body, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::func_body, Stage::After) => {
+            println!("\n");
+            dusty_context.parent_rules.pop();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process func_body -------------------------------
+
+
+        // Process func_call -------------------------------
+        (Rule::func_call, Stage::Before) => {
+            println!("  Sintactic rule FUNC_CALL found: {:#?}", pair.as_str());
+            dusty_context.parent_rules.push(Rule::func_call);
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::func_call, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::func_call, Stage::After) => {
+            println!("\n");
+            dusty_context.parent_rules.pop();
+            dusty_context.quad_data.param_counter = 1;
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process func_call -------------------------------
 
 
         // Process id_type_list ----------------------------
@@ -725,6 +864,16 @@ fn process_pair(
                 println!("  (#6) Execute #4 with >, <, == or !=");
                 dusty_context.generate_full_quad();
             }
+
+            // Parameters for function call
+            match dusty_context.parent_rules.last().unwrap() {
+                Rule::func_call => {
+                    println!("  (#?) Generate PARAM quad for function call");
+                    dusty_context.generate_param_quad();
+                }
+                _ => {}
+            }
+
             dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -929,6 +1078,10 @@ fn process_pair(
                     println!("  (#12) Generate incomplete GOTOF quad and push to jump stack");
                     dusty_context.generate_gotof_quad();
                 }
+                Rule::func_call => {
+                    println!("  (#?) Generate GOSUB quad to call function");
+                    dusty_context.generate_gosub_quad();
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
@@ -1004,11 +1157,28 @@ fn process_pair(
                     dusty_context.generate_gotow_quad();
                     dusty_context.fill_while_end();
                 }
+                Rule::funcs => {
+                    println!("  (#?) Generate ENDFUNC to indicate functions end");
+                    dusty_context.generate_endfunc_quad();
+                }
+                Rule::program => {
+                    println!("  (#?) Generate first GOTO quad to start of program");
+                    dusty_context.generate_goto_quad();
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process delimiter -------------------------------
+
+
+        // Process endKeyword ------------------------------
+        (Rule::endKeyword, Stage::Before) => {
+            println!("  token END found");
+            println!("  Generating END quad");
+            dusty_context.generate_end_quad();
+        }
+        // Process endKeyword ------------------------------
 
 
         // Anything else (move on to the next pair)
@@ -1020,7 +1190,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app5.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app6.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();

@@ -7,13 +7,14 @@ program = {
 }
 
 vars = { varsKeyword ~ (id_list ~ ":" ~ typeVar ~ delimiter)+ }
-funcs = { voidKeyword ~ id ~ "(" ~ parameters? ~ ")" ~ body ~ delimiter }
+funcs = { voidKeyword ~ id ~ "(" ~ parameters? ~ ")" ~ func_body ~ delimiter }
+func_body = { "{" ~ vars? ~ statement* ~ "}" }
 body = { "{" ~ statement* ~ "}" }
 
 statement = { assign | condition | while_loop | func_call | print }
 condition = { ifKeyword ~ openP ~ expression ~ closeP ~ body ~ (elseKeyword ~ body)? ~ delimiter }
 while_loop = { whileKeyword ~ openP ~ expression ~ closeP ~ doKeyword ~ body ~ delimiter }
-func_call = { id ~ "(" ~ expression ~ ("," ~ expression)* ~ ")" ~ delimiter }
+func_call = { id ~ openP ~ expression ~ ("," ~ expression)* ~ closeP ~ delimiter }
 print = { printKeyword ~ "(" ~ print_element ~ ("," ~ print_element)* ~ ")" ~ delimiter }
 print_element = { expression | string }
 
