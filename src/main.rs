@@ -8,6 +8,90 @@ use pest_derive::Parser;
 pub struct DustyParser;
 
 #[derive(Debug)]
+struct QuadrupleUnit {
+    name: String,
+    memory: u32,
+}
+
+impl QuadrupleUnit {
+    fn new(name: String, memory: u32) -> Self {
+        QuadrupleUnit {
+            name,
+            memory,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct VarInfo {
+    var_type: String,
+    location: u32,
+}
+
+impl VarInfo {
+    fn new(var_type: String, location: u32) -> Self {
+        VarInfo {
+            var_type,
+            location,
+        }
+    }
+    fn to_string(&self) -> String {
+        self.var_type.clone()
+    }
+}
+
+
+#[derive(Debug)]
+struct Resources {
+    int_count: u32,
+    float_count: u32,
+    temporal_count: u32,
+}
+
+impl Resources {
+    fn new() -> Self {
+        Resources {
+            int_count: 0,
+            float_count: 0,
+            temporal_count: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FunctionInfo {
+    return_type: String,
+    location: u32,
+    resources: Resources,
+    counters: [u32; 3],
+    vars: HashMap<String, VarInfo>,
+}
+
+impl FunctionInfo {
+    fn new(location: u32) -> Self {
+        FunctionInfo {
+            return_type: String::from("void"),
+            location,
+            resources: Resources::new(),
+            counters: [0, 0, 0],
+            vars: HashMap::new(),
+        }
+    }
+
+    fn contains_key(&self, key: &str) -> bool {
+        self.vars.contains_key(key)
+    }
+
+    fn get(&self, key: &str) -> Option<&VarInfo> {
+        self.vars.get(key)
+    }
+
+    fn insert(&mut self, key: String, var_type: String) {
+       self.vars.insert(key, VarInfo::new(var_type, 0));
+    }
+}
+
+#[derive(Debug)]
 enum Stage {
     Before,
     During,
@@ -111,6 +195,8 @@ struct QuadData {
     param_counter: usize,
     temp_counter: usize,
     semantic_cube: SemanticCube,
+    memmory_config: [[u32; 2]; 9],
+    operator_config: HashMap<String, usize>
 }
 
 impl QuadData {
@@ -123,20 +209,54 @@ impl QuadData {
             param_counter: 1,
             temp_counter: 1,
             semantic_cube: SemanticCube::new(),
+            memmory_config: [
+                // ---- Global ----
+                [1000,2999],  // 0. Ints
+                [3000, 4999], // 1. Floats
+                [5000, 6999], // 2. Temporal
+                // ---- Local ----
+                [11000, 12999], // 3. Ints
+                [13000, 14999], // 4. Floats
+                [15000, 16999], // 5. Temporal
+                // ---- Constants ----
+                [20000, 21999], // 6. Ints
+                [22000, 23999], // 7. Floats
+                [24000, 25999], // 8. Strings
+            ],
+            operator_config: {
+                let mut map = HashMap::new();
+                map.insert(String::from("+"), 0);
+                map.insert(String::from("-"), 1);
+                map.insert(String::from("*"), 2);
+                map.insert(String::from("/"), 3);
+                map.insert(String::from("<"), 4);
+                map.insert(String::from(">"), 5);
+                map.insert(String::from("=="), 6);
+                map.insert(String::from("!="), 7);
+                map.insert(String::from("="), 8);
+                map.insert(String::from("goto"), 9);
+                map.insert(String::from("gotof"), 10);
+                map.insert(String::from("era"), 11);
+                map.insert(String::from("param"), 12);
+                map.insert(String::from("gosub"), 13);
+                map.insert(String::from("print"), 14);
+                map.insert(String::from("end"), 15);
+                map
+            }
         }
     }
 }
 
 #[derive(Debug)]
 struct DustyContext {
-    func_dir: HashMap<String, HashMap<String, String>>, // Function-variable scope directory
+    func_dir: HashMap<String, FunctionInfo>, // Function-variable scope directory
     parent_rules: Vec<Rule>,
     current_type: String,
     current_func: String,
     current_call: String,
     id_stack: Vec<String>,
     quad_data: QuadData,
-    quadruples: VecDeque<[String; 4]>,
+    quadruples: VecDeque<[QuadrupleUnit; 4]>,
 }
 
 impl DustyContext {
@@ -193,10 +313,22 @@ impl DustyContext {
 
         let result = format!("t{}", self.quad_data.temp_counter);
         self.quadruples.push_back([
-            operator,
-            left_operand[0].clone(),
-            right_operand[0].clone(),
-            result.clone()
+            QuadrupleUnit::new(
+                operator,
+                0
+            ),
+            QuadrupleUnit::new(
+                left_operand[0].clone(),
+                0
+            ),
+            QuadrupleUnit::new(
+                right_operand[0].clone(),
+                0
+            ),
+            QuadrupleUnit::new(
+                result.clone(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
         self.quad_data.temp_counter += 1;
@@ -216,10 +348,22 @@ impl DustyContext {
         }
 
         self.quadruples.push_back([
-            operator,
-            right_operand[0].clone(),
-            "_".to_string(),
-            left_operand[0].clone()
+            QuadrupleUnit::new(
+                operator,
+                0
+            ),
+            QuadrupleUnit::new(
+                right_operand[0].clone(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                left_operand[0].clone(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
@@ -230,20 +374,44 @@ impl DustyContext {
             panic!("ERROR: Missing element to print");
         }
         self.quadruples.push_back([
-            "print".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            element.unwrap()[0].clone()
+            QuadrupleUnit::new(
+                "print".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                element.unwrap()[0].clone(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_gotof_quad(&mut self) {
         self.quadruples.push_back([
-            "gotof".to_string(),
-            format!("t{}", self.quad_data.temp_counter - 1),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "gotof".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                format!("t{}", self.quad_data.temp_counter - 1),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.jump_stack.push(self.quad_data.quad_counter);
         self.quad_data.quad_counter += 1;
@@ -251,10 +419,22 @@ impl DustyContext {
 
     fn generate_goto_quad(&mut self) {
         self.quadruples.push_back([
-            "goto".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "goto".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.jump_stack.push(self.quad_data.quad_counter);
         self.quad_data.quad_counter += 1;
@@ -262,30 +442,66 @@ impl DustyContext {
 
     fn generate_gotow_quad(&mut self) {
         self.quadruples.push_back([
-            "goto".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "goto".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_endfunc_quad(&mut self) {
         self.quadruples.push_back([
-            "endfunc".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "endfunc".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_era_quad(&mut self, func_name: &str) {
         self.quadruples.push_back([
-            "era".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            func_name.to_string(),
+            QuadrupleUnit::new(
+                "era".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                func_name.to_string(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
@@ -293,10 +509,22 @@ impl DustyContext {
     fn generate_param_quad(&mut self) {
         let param = self.quad_data.operand_stack.last().unwrap();
         self.quadruples.push_back([
-            "param".to_string(),
-            param[0].clone(),
-            "_".to_string(),
-            format!("param{}", self.quad_data.param_counter),
+            QuadrupleUnit::new(
+                "param".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                param[0].clone(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                format!("param{}", self.quad_data.param_counter),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
         self.quad_data.param_counter += 1;
@@ -304,43 +532,95 @@ impl DustyContext {
 
     fn generate_gosub_quad(&mut self) {
         self.quadruples.push_back([
-            "gosub".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            self.current_call.to_string(),
+            QuadrupleUnit::new(
+                "gosub".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                self.current_call.to_string(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_end_quad(&mut self) {
         self.quadruples.push_back([
-            "end".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string(),
+            QuadrupleUnit::new(
+                "end".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn fill_jump(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
-        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
+        self.quadruples[jump - 1][3] = QuadrupleUnit::new(
+            format!("{}", self.quad_data.quad_counter), 
+            self.quad_data.quad_counter as u32
+        );
+        // self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
     }
 
     fn fill_while_start(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
-        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
+        self.quadruples[jump - 1][3] = QuadrupleUnit::new(
+            format!("{}", self.quad_data.quad_counter+1), 
+            (self.quad_data.quad_counter+1) as u32
+        );
+        // self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
     }
 
     fn fill_while_end(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
-        self.quadruples[self.quad_data.quad_counter - 2][3] = format!("{}", jump);
+        self.quadruples[self.quad_data.quad_counter - 2][3] = QuadrupleUnit::new(
+            format!("{}", jump), 
+            jump as u32
+        );
+        // self.quadruples[self.quad_data.quad_counter - 2][3] = format!("{}", jump);
     }
 
-    fn print_quadruples(&self) {
+    fn print_quadruples_as_name(&self) {
         let mut counter = 1;
         for quad in &self.quadruples {
-            println!("{}) {:?}", counter, quad);
+            print!("{}) [", counter);
+            for unit in quad {
+                print!("\"{}\", ", unit.name);
+            }
+            print!("] \n");
+            counter += 1;
+        }
+    }
+
+    fn print_quadruples_as_memmory(&self) {
+        let mut counter = 1;
+        for quad in &self.quadruples {
+            print!("{}) [", counter);
+            for unit in quad {
+                print!("{}, ", unit.memory);
+            }
+            print!("] \n");
             counter += 1;
         }
     }
@@ -384,7 +664,7 @@ fn process_pair(
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::program => {
                     println!("  Adding global scope to function directory"); // #1 Add global scope during program name
-                    dusty_context.func_dir.insert("global".to_string(), HashMap::new());
+                    dusty_context.func_dir.insert("global".to_string(), FunctionInfo::new(0));
                     dusty_context.current_func = "global".to_string();
                 }
                 Rule::vars => {
@@ -393,7 +673,7 @@ fn process_pair(
                 }
                 Rule::funcs => {
                     println!("  Adding function scope to function directory"); // #3 Add function scope during function name
-                    dusty_context.func_dir.insert(pair.as_str().to_string(), HashMap::new());
+                    dusty_context.func_dir.insert(pair.as_str().to_string(), FunctionInfo::new(0));
                     dusty_context.current_func = pair.as_str().to_string();
                 }
                 Rule::id_type_list => {
@@ -1190,7 +1470,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app6.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app6.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
@@ -1215,5 +1495,8 @@ fn main() {
     }
 
     println!("{:#?}", dusty_context.func_dir);
-    dusty_context.print_quadruples();
+    println!(" ---------- QUADRUPLES AS NAME ---------- ");
+    dusty_context.print_quadruples_as_name();
+    println!(" ---------- QUADRUPLES AS MEMORY ---------- ");
+    dusty_context.print_quadruples_as_memmory();
 }
