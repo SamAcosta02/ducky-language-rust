@@ -533,6 +533,40 @@ fn process_pair(
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process statement -------------------------------
+
+
+        // Process while -----------------------------------
+        (Rule::while_loop, Stage::Before) => {
+            println!("  Sintactic rule WHILE found: {:#?}", pair.as_str());
+            dusty_context.parent_rules.push(Rule::while_loop);
+            process_pair(pair, Stage::During, dusty_context);
+        }
+        (Rule::while_loop, Stage::During) => {
+            let inner_pairs = pair.clone().into_inner();
+            for inner_pair in inner_pairs {
+                process_pair(
+                    inner_pair,
+                    Stage::Before,
+                    dusty_context
+                );
+            }
+            process_pair(pair, Stage::After, dusty_context);
+        }
+        (Rule::while_loop, Stage::After) => {
+            dusty_context.parent_rules.pop();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process while -----------------------------------
+
+
+        // Process doKeyword -------------------------------
+        (Rule::doKeyword, Stage::Before) => {
+            println!("  token DO found:");
+            println!("  (#?) Generate GOTO quad to start of while loop");
+            dusty_context.generate_goto_quad();
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process doKeyword -------------------------------
         
 
         // Process if --------------------------------------
@@ -848,6 +882,10 @@ fn process_pair(
                     println!("  (#6) Push open parenthesis to operator stack");
                     dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
                 }
+                Rule::while_loop => {
+                    println!("  (#?) Push to jump stack");
+                    dusty_context.quad_data.jump_stack.push(dusty_context.quad_data.quad_counter);
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
@@ -956,7 +994,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app4.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app5.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
