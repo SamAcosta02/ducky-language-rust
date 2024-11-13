@@ -225,22 +225,23 @@ impl QuadData {
             ],
             operator_config: {
                 let mut map = HashMap::new();
-                map.insert(String::from("+"), 0);
-                map.insert(String::from("-"), 1);
-                map.insert(String::from("*"), 2);
-                map.insert(String::from("/"), 3);
-                map.insert(String::from("<"), 4);
-                map.insert(String::from(">"), 5);
-                map.insert(String::from("=="), 6);
-                map.insert(String::from("!="), 7);
-                map.insert(String::from("="), 8);
-                map.insert(String::from("goto"), 9);
-                map.insert(String::from("gotof"), 10);
-                map.insert(String::from("era"), 11);
-                map.insert(String::from("param"), 12);
-                map.insert(String::from("gosub"), 13);
-                map.insert(String::from("print"), 14);
-                map.insert(String::from("end"), 15);
+                map.insert(String::from("+"), 1);
+                map.insert(String::from("-"), 2);
+                map.insert(String::from("*"), 3);
+                map.insert(String::from("/"), 4);
+                map.insert(String::from("<"), 5);
+                map.insert(String::from(">"), 6);
+                map.insert(String::from("=="), 7);
+                map.insert(String::from("!="), 8);
+                map.insert(String::from("="), 9);
+                map.insert(String::from("goto"), 10);
+                map.insert(String::from("gotof"), 11);
+                map.insert(String::from("era"), 12);
+                map.insert(String::from("param"), 13);
+                map.insert(String::from("gosub"), 14);
+                map.insert(String::from("print"), 15);
+                map.insert(String::from("end"), 16);
+                map.insert(String::from("endfunc"), 17);
                 map
             }
         }
@@ -314,8 +315,8 @@ impl DustyContext {
         let result = format!("t{}", self.quad_data.temp_counter);
         self.quadruples.push_back([
             QuadrupleUnit::new(
-                operator,
-                0
+                operator.clone(),
+                self.quad_data.operator_config.get(&operator).unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 left_operand[0].clone(),
@@ -349,8 +350,8 @@ impl DustyContext {
 
         self.quadruples.push_back([
             QuadrupleUnit::new(
-                operator,
-                0
+                operator.clone(),
+                self.quad_data.operator_config.get(&operator).unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 right_operand[0].clone(),
@@ -376,7 +377,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "print".to_string(),
-                0
+                self.quad_data.operator_config.get("print").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -398,7 +399,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "gotof".to_string(),
-                0
+                self.quad_data.operator_config.get("gotof").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 format!("t{}", self.quad_data.temp_counter - 1),
@@ -421,7 +422,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "goto".to_string(),
-                0
+                self.quad_data.operator_config.get("goto").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -444,7 +445,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "goto".to_string(),
-                0
+                self.quad_data.operator_config.get("goto").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -466,7 +467,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "endfunc".to_string(),
-                0
+                self.quad_data.operator_config.get("endfunc").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -488,7 +489,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "era".to_string(),
-                0
+                self.quad_data.operator_config.get("era").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -511,7 +512,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "param".to_string(),
-                0
+                self.quad_data.operator_config.get("param").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 param[0].clone(),
@@ -534,7 +535,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "gosub".to_string(),
-                0
+                self.quad_data.operator_config.get("gosub").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -556,7 +557,7 @@ impl DustyContext {
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "end".to_string(),
-                0
+                self.quad_data.operator_config.get("end").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
