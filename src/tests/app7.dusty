@@ -1,0 +1,10 @@
+program real_test;
+
+vars example:int;
+
+begin
+{
+  example = 10;
+  print!(example);
+}
+end

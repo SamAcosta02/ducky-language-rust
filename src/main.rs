@@ -8,6 +8,114 @@ use pest_derive::Parser;
 pub struct DustyParser;
 
 #[derive(Debug)]
+struct QuadrupleUnit {
+    name: String,
+    memory: u32,
+}
+
+impl QuadrupleUnit {
+    fn new(name: String, memory: u32) -> Self {
+        QuadrupleUnit {
+            name,
+            memory,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[derive(Clone)]
+struct VarInfo {
+    name: String,
+    var_type: String,
+    location: u32,
+    // kind: String
+}
+
+impl VarInfo {
+    fn new(name:String, var_type: String, location: u32) -> Self {
+        VarInfo {
+            name,
+            var_type,
+            location,
+            // kind
+        }
+    }
+    // fn to_string(&self) -> String {
+    //     self.var_type.clone()
+    // }
+}
+
+
+#[derive(Debug)]
+struct Resources {
+    int_count: u32,
+    float_count: u32,
+    temporal_count: u32,
+}
+
+impl Resources {
+    fn new() -> Self {
+        Resources {
+            int_count: 0,
+            float_count: 0,
+            temporal_count: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FunctionInfo {
+    // return_type: String,
+    location: u32,
+    resources: Resources,
+    vars: HashMap<String, VarInfo>,
+}
+
+impl FunctionInfo {
+    fn new(location: u32) -> Self {
+        FunctionInfo {
+            // return_type: String::from("void"),
+            location,
+            resources: Resources::new(),
+            vars: HashMap::new(),
+        }
+    }
+
+    fn contains_key(&self, key: &str) -> bool {
+        self.vars.contains_key(key)
+    }
+
+    fn get(&self, key: &str) -> Option<&VarInfo> {
+        self.vars.get(key)
+    }
+
+    fn get_counter(&self, var_type: &str, kind: &str) -> u32 {
+        println!("Getting counter for {} {}", var_type, kind);
+        match (var_type, kind) {
+            ("int", "regular") => self.resources.int_count,
+            ("float", "regular") => self.resources.float_count,
+            ("int", "temporal") => self.resources.temporal_count,
+            ("float", "temporal") => self.resources.temporal_count,
+            _ => 9999
+        }
+    }
+
+    fn add_to_counter(&mut self, var_type: &str, kind: &str) {
+        match (var_type, kind) {
+            ("int", "regular") => self.resources.int_count += 1,
+            ("float", "regular") => self.resources.float_count += 1,
+            ("int", "temporal") => self.resources.temporal_count += 1,
+            ("float", "temporal") => self.resources.temporal_count += 1,
+            _ => {}
+        }
+    }
+
+    fn insert(&mut self, key: String, var_type: String, memory: u32) {
+       self.vars.insert(key.clone(), VarInfo::new(key, var_type, memory));
+    }
+}
+
+#[derive(Debug)]
 enum Stage {
     Before,
     During,
@@ -105,12 +213,14 @@ impl SemanticCube {
 #[derive(Debug)]
 struct QuadData {
     operator_stack: Vec<String>,
-    operand_stack: Vec<[String; 2]>,
+    operand_stack: Vec<VarInfo>,
     jump_stack: Vec<usize>,
     quad_counter: usize,
     param_counter: usize,
     temp_counter: usize,
     semantic_cube: SemanticCube,
+    memmory_config: [[u32; 2]; 9],
+    operator_config: HashMap<String, usize>
 }
 
 impl QuadData {
@@ -123,20 +233,73 @@ impl QuadData {
             param_counter: 1,
             temp_counter: 1,
             semantic_cube: SemanticCube::new(),
+            memmory_config: [
+                // ---- Global ----
+                [1000, 2999], // 0. Ints
+                [3000, 4999], // 1. Floats
+                [5000, 6999], // 2. Temporal
+                // ---- Local ----
+                [11000, 12999], // 3. Ints
+                [13000, 14999], // 4. Floats
+                [15000, 16999], // 5. Temporal
+                // ---- Constants ----
+                [21000, 22999], // 6. Ints
+                [23000, 24999], // 7. Floats
+                [25000, 26999], // 8. Strings
+            ],
+            operator_config: {
+                let mut map = HashMap::new();
+                map.insert(String::from("+"), 1);
+                map.insert(String::from("-"), 2);
+                map.insert(String::from("*"), 3);
+                map.insert(String::from("/"), 4);
+                map.insert(String::from("<"), 5);
+                map.insert(String::from(">"), 6);
+                map.insert(String::from("=="), 7);
+                map.insert(String::from("!="), 8);
+                map.insert(String::from("="), 9);
+                map.insert(String::from("goto"), 10);
+                map.insert(String::from("gotof"), 11);
+                map.insert(String::from("era"), 12);
+                map.insert(String::from("param"), 13);
+                map.insert(String::from("gosub"), 14);
+                map.insert(String::from("print"), 15);
+                map.insert(String::from("end"), 16);
+                map.insert(String::from("endfunc"), 17);
+                map
+            }
+        }
+    }
+
+    fn get_memory_segment(&self, var_type: &str, current_func: &str, kind: &str) -> u32 {
+        match(var_type, current_func, kind) {
+            ("int", "global", "regular") => self.memmory_config[0][0],
+            ("float", "global", "regular") => self.memmory_config[1][0],
+            ("int", "global", "temporal") => self.memmory_config[2][0],
+            ("float", "global", "temporal") => self.memmory_config[2][0],
+            ("int", _, "regular") => self.memmory_config[3][0],
+            ("float", _, "regular") => self.memmory_config[4][0],
+            ("int", _, "temporal") => self.memmory_config[5][0],
+            ("float", _, "temporal") => self.memmory_config[5][0],
+            ("int", _, "constant") => self.memmory_config[6][0],
+            ("float", _, "constant") => self.memmory_config[7][0],
+            ("string", _, "constant") => self.memmory_config[8][0],
+            _ => 999999
         }
     }
 }
 
 #[derive(Debug)]
 struct DustyContext {
-    func_dir: HashMap<String, HashMap<String, String>>, // Function-variable scope directory
+    func_dir: HashMap<String, FunctionInfo>, // Function-variable scope directory
     parent_rules: Vec<Rule>,
     current_type: String,
     current_func: String,
     current_call: String,
     id_stack: Vec<String>,
     quad_data: QuadData,
-    quadruples: VecDeque<[String; 4]>,
+    quadruples: VecDeque<[QuadrupleUnit; 4]>,
+    constants: u32
 }
 
 impl DustyContext {
@@ -150,6 +313,7 @@ impl DustyContext {
             current_type: String::new(),
             quad_data: QuadData::new(),
             quadruples: VecDeque::new(),
+            constants: 0
         }
     }
 
@@ -178,8 +342,15 @@ impl DustyContext {
         self.quad_data.operator_stack.last() == Some(&String::from("="))
     }
 
+    // fn insert_variable(&mut self, id: String, var_type:String, kind: &str) {
+    //     let base = self.quad_data.get_memory_segment(&var_type, &self.current_func, kind);
+    //     let counter = self.func_dir.get_mut(&self.current_func).unwrap().get_counter(&var_type, kind);
+    //     self.func_dir.get_mut(&self.current_func).unwrap().insert(id.to_string(), var_type.to_string(), base+counter);
+    //     self.constants += 1;
+    // }
+
     fn generate_full_quad(&mut self) {
-        // println!("{:?}",self.quad_data.operand_stack);
+        // Get Operands and Operator
         let right_operand = self.quad_data.operand_stack.pop()
             .expect("ERROR: Missing right operand");
         let left_operand = self.quad_data.operand_stack.pop()
@@ -187,20 +358,46 @@ impl DustyContext {
         let operator = self.quad_data.operator_stack.pop()
             .expect("ERROR: Missing operator");
 
-        if self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator) == "error" {
-            panic!("ERROR: Type mismatch. Cannot use {} with {} and {}.", operator, left_operand[1], right_operand[1]);
+        // Check if types are compatible
+        if self.quad_data.semantic_cube.get_result_type(&left_operand.var_type, &right_operand.var_type, &operator) == "error" {
+            panic!("ERROR: Type mismatch. Cannot use {} with {} and {}.", operator, left_operand.var_type, right_operand.var_type);
         }
 
-        let result = format!("t{}", self.quad_data.temp_counter);
+        // get result type
+        let result_type = self.quad_data.semantic_cube.get_result_type(&left_operand.var_type, &right_operand.var_type, &operator);
+
+        // Get temp variable information
+        let name = format!("t{}", self.quad_data.temp_counter);
+        let var_type = result_type.clone();
+        let base = self.quad_data.get_memory_segment(&var_type, &self.current_func, "temporal");
+        let counter = self.func_dir.get_mut(&self.current_func).unwrap().get_counter(&var_type, "temporal");
+        // let kind: String = "temporal".to_string();
+
+        let result = VarInfo::new(name.clone(), var_type.clone(), base+counter);
+
         self.quadruples.push_back([
-            operator,
-            left_operand[0].clone(),
-            right_operand[0].clone(),
-            result.clone()
+            QuadrupleUnit::new(
+                operator.clone(),
+                self.quad_data.operator_config.get(&operator).unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                left_operand.name,
+                left_operand.location
+            ),
+            QuadrupleUnit::new(
+                right_operand.name,
+                right_operand.location
+            ),
+            QuadrupleUnit::new(
+                result.name.clone(),
+                result.location.clone()
+            )
         ]);
         self.quad_data.quad_counter += 1;
         self.quad_data.temp_counter += 1;
-        self.quad_data.operand_stack.push([result.clone(), right_operand[1].clone()]);
+        
+        self.quad_data.operand_stack.push(result.clone());
+        self.func_dir.get_mut(&self.current_func).unwrap().add_to_counter(&self.current_type, "temporal");
     }
 
     fn generate_assign_quad(&mut self) {
@@ -211,15 +408,27 @@ impl DustyContext {
         let operator = self.quad_data.operator_stack.pop()
             .expect("ERROR: Missing operator");
 
-        if self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator) == "error" {
-            panic!("ERROR: Type mismatch. Cannot assign {} to {}", right_operand[1], left_operand[1]);
+        if self.quad_data.semantic_cube.get_result_type(&left_operand.var_type, &right_operand.var_type, &operator) == "error" {
+            panic!("ERROR: Type mismatch. Cannot assign {} to {}", right_operand.var_type, left_operand.var_type);
         }
 
         self.quadruples.push_back([
-            operator,
-            right_operand[0].clone(),
-            "_".to_string(),
-            left_operand[0].clone()
+            QuadrupleUnit::new(
+                operator.clone(),
+                self.quad_data.operator_config.get(&operator).unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                right_operand.name,
+                right_operand.location
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                left_operand.name,
+                left_operand.location
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
@@ -230,20 +439,44 @@ impl DustyContext {
             panic!("ERROR: Missing element to print");
         }
         self.quadruples.push_back([
-            "print".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            element.unwrap()[0].clone()
+            QuadrupleUnit::new(
+                "print".to_string(),
+                self.quad_data.operator_config.get("print").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                element.unwrap().name.clone(),
+                element.unwrap().location
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_gotof_quad(&mut self) {
         self.quadruples.push_back([
-            "gotof".to_string(),
-            format!("t{}", self.quad_data.temp_counter - 1),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "gotof".to_string(),
+                self.quad_data.operator_config.get("gotof").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                format!("t{}", self.quad_data.temp_counter - 1),
+                self.quad_data.operand_stack.last().unwrap().location
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.jump_stack.push(self.quad_data.quad_counter);
         self.quad_data.quad_counter += 1;
@@ -251,10 +484,22 @@ impl DustyContext {
 
     fn generate_goto_quad(&mut self) {
         self.quadruples.push_back([
-            "goto".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "goto".to_string(),
+                self.quad_data.operator_config.get("goto").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.jump_stack.push(self.quad_data.quad_counter);
         self.quad_data.quad_counter += 1;
@@ -262,30 +507,66 @@ impl DustyContext {
 
     fn generate_gotow_quad(&mut self) {
         self.quadruples.push_back([
-            "goto".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "goto".to_string(),
+                self.quad_data.operator_config.get("goto").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_endfunc_quad(&mut self) {
         self.quadruples.push_back([
-            "endfunc".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string()
+            QuadrupleUnit::new(
+                "endfunc".to_string(),
+                self.quad_data.operator_config.get("endfunc").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_era_quad(&mut self, func_name: &str) {
         self.quadruples.push_back([
-            "era".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            func_name.to_string(),
+            QuadrupleUnit::new(
+                "era".to_string(),
+                self.quad_data.operator_config.get("era").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                func_name.to_string(),
+                self.func_dir.get(&self.current_call).unwrap().location
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
@@ -293,10 +574,22 @@ impl DustyContext {
     fn generate_param_quad(&mut self) {
         let param = self.quad_data.operand_stack.last().unwrap();
         self.quadruples.push_back([
-            "param".to_string(),
-            param[0].clone(),
-            "_".to_string(),
-            format!("param{}", self.quad_data.param_counter),
+            QuadrupleUnit::new(
+                "param".to_string(),
+                self.quad_data.operator_config.get("param").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                param.name.clone(),
+                param.location.clone()
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                format!("param{}", self.quad_data.param_counter),
+                self.quad_data.param_counter as u32
+            )
         ]);
         self.quad_data.quad_counter += 1;
         self.quad_data.param_counter += 1;
@@ -304,43 +597,95 @@ impl DustyContext {
 
     fn generate_gosub_quad(&mut self) {
         self.quadruples.push_back([
-            "gosub".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            self.current_call.to_string(),
+            QuadrupleUnit::new(
+                "gosub".to_string(),
+                self.quad_data.operator_config.get("gosub").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                self.current_call.to_string(),
+                self.func_dir.get(&self.current_call).unwrap().location
+            )
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn generate_end_quad(&mut self) {
         self.quadruples.push_back([
-            "end".to_string(),
-            "_".to_string(),
-            "_".to_string(),
-            "_".to_string(),
+            QuadrupleUnit::new(
+                "end".to_string(),
+                self.quad_data.operator_config.get("end").unwrap().clone() as u32
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
+            QuadrupleUnit::new(
+                "_".to_string(),
+                0
+            ),
         ]);
         self.quad_data.quad_counter += 1;
     }
 
     fn fill_jump(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
-        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
+        self.quadruples[jump - 1][3] = QuadrupleUnit::new(
+            format!("{}", self.quad_data.quad_counter), 
+            self.quad_data.quad_counter as u32
+        );
+        // self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter);
     }
 
     fn fill_while_start(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
-        self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
+        self.quadruples[jump - 1][3] = QuadrupleUnit::new(
+            format!("{}", self.quad_data.quad_counter+1), 
+            (self.quad_data.quad_counter+1) as u32
+        );
+        // self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
     }
 
     fn fill_while_end(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
-        self.quadruples[self.quad_data.quad_counter - 2][3] = format!("{}", jump);
+        self.quadruples[self.quad_data.quad_counter - 2][3] = QuadrupleUnit::new(
+            format!("{}", jump), 
+            jump as u32
+        );
+        // self.quadruples[self.quad_data.quad_counter - 2][3] = format!("{}", jump);
     }
 
-    fn print_quadruples(&self) {
+    fn print_quadruples_as_name(&self) {
         let mut counter = 1;
         for quad in &self.quadruples {
-            println!("{}) {:?}", counter, quad);
+            print!("{}) [", counter);
+            for unit in quad {
+                print!("\"{}\", ", unit.name);
+            }
+            print!("] \n");
+            counter += 1;
+        }
+    }
+
+    fn print_quadruples_as_memmory(&self) {
+        let mut counter = 1;
+        for quad in &self.quadruples {
+            print!("{}) [", counter);
+            for unit in quad {
+                print!("{}, ", unit.memory);
+            }
+            print!("] \n");
             counter += 1;
         }
     }
@@ -384,7 +729,7 @@ fn process_pair(
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::program => {
                     println!("  Adding global scope to function directory"); // #1 Add global scope during program name
-                    dusty_context.func_dir.insert("global".to_string(), HashMap::new());
+                    dusty_context.func_dir.insert("global".to_string(), FunctionInfo::new(0));
                     dusty_context.current_func = "global".to_string();
                 }
                 Rule::vars => {
@@ -393,7 +738,7 @@ fn process_pair(
                 }
                 Rule::funcs => {
                     println!("  Adding function scope to function directory"); // #3 Add function scope during function name
-                    dusty_context.func_dir.insert(pair.as_str().to_string(), HashMap::new());
+                    dusty_context.func_dir.insert(pair.as_str().to_string(), FunctionInfo::new(0));
                     dusty_context.current_func = pair.as_str().to_string();
                 }
                 Rule::id_type_list => {
@@ -403,10 +748,11 @@ fn process_pair(
                 Rule::assign => {
                     // Quad generation
                     if dusty_context.contains_id(pair.as_str()) {
-                        dusty_context.quad_data.operand_stack.push([
-                            pair.as_str().to_string(),
-                            dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string()
-                        ]);
+                        let var = dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap();
+
+                        dusty_context.quad_data.operand_stack.push(var.clone());
+
+                        println!("{:#?}", dusty_context.quad_data.operand_stack);
                     } else {
                         panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
                     }
@@ -436,16 +782,12 @@ fn process_pair(
                 Rule::value => {
                     if dusty_context.contains_id(pair.as_str()) {
                         println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
-                        dusty_context.quad_data.operand_stack.push([
-                            pair.as_str().to_string(),
-                            dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string()
-                        ]);
+                        let var = dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().clone();
+                        dusty_context.quad_data.operand_stack.push(var);
                     } else {
                         println!("  (#1) Adding global ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
-                        dusty_context.quad_data.operand_stack.push([
-                            pair.as_str().to_string(),
-                            dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap().to_string()
-                        ]);
+                        let var = dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap().clone();
+                        dusty_context.quad_data.operand_stack.push(var);
                     }
                     println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
                 }
@@ -496,8 +838,24 @@ fn process_pair(
                 if dusty_context.contains_id(&id) {
                     panic!("ERROR: id {} already exists in current context (typevar)", id);
                 } else {
-                    println!("Adding id {} to {} as {}", id, dusty_context.current_func, dusty_context.current_type);
-                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().insert(id.clone(), dusty_context.current_type.clone());
+                    // Create variable Info
+                    let var_type = dusty_context.current_type.clone();
+                    let base = dusty_context.quad_data.get_memory_segment(&var_type, &dusty_context.current_func, "regular");
+                    let counter = dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().get_counter(&var_type, "regular");
+                    
+                    println!("Adding id {} to {} as {} in {}", id, dusty_context.current_func, dusty_context.current_type, base+counter);
+                    
+                    // Insert variable to function directory
+                    dusty_context.func_dir
+                        .get_mut(&dusty_context.current_func)
+                        .unwrap()
+                        .insert(id.clone(), dusty_context.current_type.clone(), base+counter);
+
+                    // Increase counter
+                    dusty_context.func_dir
+                        .get_mut(&dusty_context.current_func)
+                        .unwrap()
+                        .add_to_counter(&dusty_context.current_type, "regular");
                 }
             }
             // println!("func_dir: {:#?}", dusty_context.func_dir);
@@ -1082,6 +1440,10 @@ fn process_pair(
                     println!("  (#?) Generate GOSUB quad to call function");
                     dusty_context.generate_gosub_quad();
                 }
+                Rule::funcs => {
+                    println!("  (#?) Assign quadruple location to the start of the function");
+                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().location = dusty_context.quad_data.quad_counter as u32;
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
@@ -1116,11 +1478,14 @@ fn process_pair(
         (Rule::cte_int, Stage::Before) => {
             println!("  token CTE found: {:#?}", pair.as_str());
             println!("  (#1) Adding CTE to operand stack in factor");
-            dusty_context.quad_data.operand_stack.push([
+            let const_var = VarInfo::new(
                 pair.as_str().to_string(),
-                "int".to_string()
-            ]);
+                "int".to_string(),
+                0,
+            );
+            dusty_context.quad_data.operand_stack.push(const_var);
             println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+            dusty_context.constants += 1;
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process cte_int ---------------------------------
@@ -1130,10 +1495,12 @@ fn process_pair(
         (Rule::cte_float, Stage::Before) => {
             println!("  token CTE_FLOAT found: {:#?}", pair.as_str());
             println!("  (#1) Adding CTE_FLOAT to operand stack in factor");
-            dusty_context.quad_data.operand_stack.push([
+            let const_var = VarInfo::new(
                 pair.as_str().to_string(),
-                "float".to_string()
-            ]);
+                "float".to_string(),
+                0,
+            );
+            dusty_context.quad_data.operand_stack.push(const_var);
             println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1188,6 +1555,8 @@ fn process_pair(
     }
 }
 
+
+
 fn main() {
     // File path to read
     let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app6.dusty";
@@ -1197,8 +1566,6 @@ fn main() {
 
     match DustyParser::parse(Rule::program, &patito_file) {
         Ok(pairs) => {
-            // println!("{:#?}", pairs.into_iter().next().unwrap().into_inner());
-            // dusty_context.syntax_flow = context_pairs;
             // Go through the AST and trigger actions in certain parts
             for pair in pairs.into_iter().next().unwrap().into_inner() {
                 process_pair(
@@ -1206,7 +1573,6 @@ fn main() {
                     Stage::Before,
                     &mut dusty_context
                 );
-                // println!("{:#?}", pair.as_rule());
             }
         }
         Err(e) => {
@@ -1215,5 +1581,8 @@ fn main() {
     }
 
     println!("{:#?}", dusty_context.func_dir);
-    dusty_context.print_quadruples();
+    println!(" ---------- QUADRUPLES AS NAME ---------- ");
+    dusty_context.print_quadruples_as_name();
+    println!(" ---------- QUADRUPLES AS MEMORY ---------- ");
+    dusty_context.print_quadruples_as_memmory();
 }
