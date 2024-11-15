@@ -32,7 +32,7 @@ struct VarInfo {
 }
 
 impl VarInfo {
-    fn new(name:String, var_type: String, location: u32, kind: String) -> Self {
+    fn new(name:String, var_type: String, location: u32) -> Self {
         VarInfo {
             name,
             var_type,
@@ -66,7 +66,7 @@ impl Resources {
 #[derive(Debug)]
 struct FunctionInfo {
     // return_type: String,
-    // location: u32,
+    location: u32,
     resources: Resources,
     vars: HashMap<String, VarInfo>,
 }
@@ -75,7 +75,7 @@ impl FunctionInfo {
     fn new(location: u32) -> Self {
         FunctionInfo {
             // return_type: String::from("void"),
-            // location,
+            location,
             resources: Resources::new(),
             vars: HashMap::new(),
         }
@@ -110,8 +110,8 @@ impl FunctionInfo {
         }
     }
 
-    fn insert(&mut self, key: String, var_type: String, memory: u32, kind: String) {
-       self.vars.insert(key.clone(), VarInfo::new(key, var_type, memory, kind));
+    fn insert(&mut self, key: String, var_type: String, memory: u32) {
+       self.vars.insert(key.clone(), VarInfo::new(key, var_type, memory));
     }
 }
 
@@ -371,9 +371,9 @@ impl DustyContext {
         let var_type = result_type.clone();
         let base = self.quad_data.get_memory_segment(&var_type, &self.current_func, "temporal");
         let counter = self.func_dir.get_mut(&self.current_func).unwrap().get_counter(&var_type, "temporal");
-        let kind: String = "temporal".to_string();
+        // let kind: String = "temporal".to_string();
 
-        let result = VarInfo::new(name.clone(), var_type.clone(), base+counter, kind);
+        let result = VarInfo::new(name.clone(), var_type.clone(), base+counter);
 
         self.quadruples.push_back([
             QuadrupleUnit::new(
@@ -467,7 +467,7 @@ impl DustyContext {
             ),
             QuadrupleUnit::new(
                 format!("t{}", self.quad_data.temp_counter - 1),
-                0
+                self.quad_data.operand_stack.last().unwrap().location
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -565,7 +565,7 @@ impl DustyContext {
             ),
             QuadrupleUnit::new(
                 func_name.to_string(),
-                0
+                self.func_dir.get(&self.current_call).unwrap().location
             )
         ]);
         self.quad_data.quad_counter += 1;
@@ -580,7 +580,7 @@ impl DustyContext {
             ),
             QuadrupleUnit::new(
                 param.name.clone(),
-                0
+                param.location.clone()
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
@@ -588,7 +588,7 @@ impl DustyContext {
             ),
             QuadrupleUnit::new(
                 format!("param{}", self.quad_data.param_counter),
-                0
+                self.quad_data.param_counter as u32
             )
         ]);
         self.quad_data.quad_counter += 1;
@@ -611,7 +611,7 @@ impl DustyContext {
             ),
             QuadrupleUnit::new(
                 self.current_call.to_string(),
-                0
+                self.func_dir.get(&self.current_call).unwrap().location
             )
         ]);
         self.quad_data.quad_counter += 1;
@@ -849,7 +849,7 @@ fn process_pair(
                     dusty_context.func_dir
                         .get_mut(&dusty_context.current_func)
                         .unwrap()
-                        .insert(id.clone(), dusty_context.current_type.clone(), base+counter, "regular".to_string());
+                        .insert(id.clone(), dusty_context.current_type.clone(), base+counter);
 
                     // Increase counter
                     dusty_context.func_dir
@@ -1440,6 +1440,10 @@ fn process_pair(
                     println!("  (#?) Generate GOSUB quad to call function");
                     dusty_context.generate_gosub_quad();
                 }
+                Rule::funcs => {
+                    println!("  (#?) Assign quadruple location to the start of the function");
+                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().location = dusty_context.quad_data.quad_counter as u32;
+                }
                 _ => {}
             }
             process_pair(pair, Stage::Finished, dusty_context);
@@ -1478,7 +1482,6 @@ fn process_pair(
                 pair.as_str().to_string(),
                 "int".to_string(),
                 0,
-                "constant".to_string()
             );
             dusty_context.quad_data.operand_stack.push(const_var);
             println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
@@ -1496,7 +1499,6 @@ fn process_pair(
                 pair.as_str().to_string(),
                 "float".to_string(),
                 0,
-                "constant".to_string()
             );
             dusty_context.quad_data.operand_stack.push(const_var);
             println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
@@ -1557,7 +1559,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app6.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app6.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();

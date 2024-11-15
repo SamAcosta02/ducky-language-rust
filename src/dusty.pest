@@ -7,7 +7,7 @@ program = {
 }
 
 vars = { varsKeyword ~ (id_list ~ ":" ~ typeVar ~ delimiter)+ }
-funcs = { voidKeyword ~ id ~ "(" ~ parameters? ~ ")" ~ func_body ~ delimiter }
+funcs = { voidKeyword ~ id ~ openP ~ parameters? ~ closeP ~ func_body ~ delimiter }
 func_body = { "{" ~ vars? ~ statement* ~ "}" }
 body = { "{" ~ statement* ~ "}" }
 
