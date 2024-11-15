@@ -11,7 +11,6 @@ pub struct DustyParser;
 struct QuadrupleUnit {
     name: String,
     memory: u32,
-    // is_temp: bool,
 }
 
 impl QuadrupleUnit {
@@ -19,27 +18,31 @@ impl QuadrupleUnit {
         QuadrupleUnit {
             name,
             memory,
-            // is_temp: false,
         }
     }
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 struct VarInfo {
+    name: String,
     var_type: String,
     location: u32,
+    // kind: String
 }
 
 impl VarInfo {
-    fn new(var_type: String, location: u32) -> Self {
+    fn new(name:String, var_type: String, location: u32, kind: String) -> Self {
         VarInfo {
+            name,
             var_type,
             location,
+            // kind
         }
     }
-    fn to_string(&self) -> String {
-        self.var_type.clone()
-    }
+    // fn to_string(&self) -> String {
+    //     self.var_type.clone()
+    // }
 }
 
 
@@ -62,8 +65,8 @@ impl Resources {
 
 #[derive(Debug)]
 struct FunctionInfo {
-    return_type: String,
-    location: u32,
+    // return_type: String,
+    // location: u32,
     resources: Resources,
     vars: HashMap<String, VarInfo>,
 }
@@ -71,8 +74,8 @@ struct FunctionInfo {
 impl FunctionInfo {
     fn new(location: u32) -> Self {
         FunctionInfo {
-            return_type: String::from("void"),
-            location,
+            // return_type: String::from("void"),
+            // location,
             resources: Resources::new(),
             vars: HashMap::new(),
         }
@@ -107,8 +110,8 @@ impl FunctionInfo {
         }
     }
 
-    fn insert(&mut self, key: String, var_type: String) {
-       self.vars.insert(key, VarInfo::new(var_type, 0));
+    fn insert(&mut self, key: String, var_type: String, memory: u32, kind: String) {
+       self.vars.insert(key.clone(), VarInfo::new(key, var_type, memory, kind));
     }
 }
 
@@ -210,7 +213,7 @@ impl SemanticCube {
 #[derive(Debug)]
 struct QuadData {
     operator_stack: Vec<String>,
-    operand_stack: Vec<[String; 3]>,
+    operand_stack: Vec<VarInfo>,
     jump_stack: Vec<usize>,
     quad_counter: usize,
     param_counter: usize,
@@ -339,8 +342,15 @@ impl DustyContext {
         self.quad_data.operator_stack.last() == Some(&String::from("="))
     }
 
+    // fn insert_variable(&mut self, id: String, var_type:String, kind: &str) {
+    //     let base = self.quad_data.get_memory_segment(&var_type, &self.current_func, kind);
+    //     let counter = self.func_dir.get_mut(&self.current_func).unwrap().get_counter(&var_type, kind);
+    //     self.func_dir.get_mut(&self.current_func).unwrap().insert(id.to_string(), var_type.to_string(), base+counter);
+    //     self.constants += 1;
+    // }
+
     fn generate_full_quad(&mut self) {
-        // println!("{:?}",self.quad_data.operand_stack);
+        // Get Operands and Operator
         let right_operand = self.quad_data.operand_stack.pop()
             .expect("ERROR: Missing right operand");
         let left_operand = self.quad_data.operand_stack.pop()
@@ -348,62 +358,45 @@ impl DustyContext {
         let operator = self.quad_data.operator_stack.pop()
             .expect("ERROR: Missing operator");
 
-        if self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator) == "error" {
-            panic!("ERROR: Type mismatch. Cannot use {} with {} and {}.", operator, left_operand[1], right_operand[1]);
+        // Check if types are compatible
+        if self.quad_data.semantic_cube.get_result_type(&left_operand.var_type, &right_operand.var_type, &operator) == "error" {
+            panic!("ERROR: Type mismatch. Cannot use {} with {} and {}.", operator, left_operand.var_type, right_operand.var_type);
         }
 
-        let result_type = self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator);
+        // get result type
+        let result_type = self.quad_data.semantic_cube.get_result_type(&left_operand.var_type, &right_operand.var_type, &operator);
 
-        let mut base1 = self.quad_data.get_memory_segment(&left_operand[1], &self.current_func, &left_operand[2]);
-        if !self.contains_id(left_operand[0].as_str()) && left_operand[2] != "temporal" {
-            base1 = self.quad_data.get_memory_segment(&left_operand[1], "global", &left_operand[2]);
-        }
+        // Get temp variable information
+        let name = format!("t{}", self.quad_data.temp_counter);
+        let var_type = result_type.clone();
+        let base = self.quad_data.get_memory_segment(&var_type, &self.current_func, "temporal");
+        let counter = self.func_dir.get_mut(&self.current_func).unwrap().get_counter(&var_type, "temporal");
+        let kind: String = "temporal".to_string();
 
-        let mut base2 = self.quad_data.get_memory_segment(&right_operand[1], &self.current_func, &right_operand[2]);
-        if !self.contains_id(right_operand[0].as_str()) && right_operand[2] != "temporal" {
-            base2 = self.quad_data.get_memory_segment(&right_operand[1], "global", &right_operand[2]);
-        }
+        let result = VarInfo::new(name.clone(), var_type.clone(), base+counter, kind);
 
-        let mut counter1 = self.func_dir.get(&self.current_func).unwrap().get_counter(&left_operand[1], &left_operand[2]);
-        let mut counter2 = self.func_dir.get(&self.current_func).unwrap().get_counter(&right_operand[1], &right_operand[2]);
-
-        if left_operand[2] == "temporal" {
-            counter1 = 0;
-        }
-        else if counter1 == 9999 {
-            counter1 = self.constants;
-        }
-
-        if right_operand[2] == "temporal" {
-            counter2 = 0;
-        }
-        else if counter2 == 9999 {
-            counter2 = self.constants;
-        }
-
-        let result = format!("t{}", self.quad_data.temp_counter);
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 operator.clone(),
                 self.quad_data.operator_config.get(&operator).unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
-                left_operand[0].clone(),
-                base1 + counter1
+                left_operand.name,
+                left_operand.location
             ),
             QuadrupleUnit::new(
-                right_operand[0].clone(),
-                base2 + counter2
+                right_operand.name,
+                right_operand.location
             ),
             QuadrupleUnit::new(
-                result.clone(),
-                self.quad_data.get_memory_segment(&result_type, &self.current_func, &"temporal".to_string()) +
-                    self.func_dir.get(&self.current_func).unwrap().get_counter(&result_type, &"temporal".to_string())
+                result.name.clone(),
+                result.location.clone()
             )
         ]);
         self.quad_data.quad_counter += 1;
         self.quad_data.temp_counter += 1;
-        self.quad_data.operand_stack.push([result.clone(), result_type.clone(), "temporal".to_string()]);
+        
+        self.quad_data.operand_stack.push(result.clone());
         self.func_dir.get_mut(&self.current_func).unwrap().add_to_counter(&self.current_type, "temporal");
     }
 
@@ -415,8 +408,8 @@ impl DustyContext {
         let operator = self.quad_data.operator_stack.pop()
             .expect("ERROR: Missing operator");
 
-        if self.quad_data.semantic_cube.get_result_type(&left_operand[1], &right_operand[1], &operator) == "error" {
-            panic!("ERROR: Type mismatch. Cannot assign {} to {}", right_operand[1], left_operand[1]);
+        if self.quad_data.semantic_cube.get_result_type(&left_operand.var_type, &right_operand.var_type, &operator) == "error" {
+            panic!("ERROR: Type mismatch. Cannot assign {} to {}", right_operand.var_type, left_operand.var_type);
         }
 
         self.quadruples.push_back([
@@ -425,16 +418,16 @@ impl DustyContext {
                 self.quad_data.operator_config.get(&operator).unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
-                right_operand[0].clone(),
-                0
+                right_operand.name,
+                right_operand.location
             ),
             QuadrupleUnit::new(
                 "_".to_string(),
                 0
             ),
             QuadrupleUnit::new(
-                left_operand[0].clone(),
-                0
+                left_operand.name,
+                left_operand.location
             )
         ]);
         self.quad_data.quad_counter += 1;
@@ -459,8 +452,8 @@ impl DustyContext {
                 0
             ),
             QuadrupleUnit::new(
-                element.unwrap()[0].clone(),
-                0
+                element.unwrap().name.clone(),
+                element.unwrap().location
             )
         ]);
         self.quad_data.quad_counter += 1;
@@ -586,7 +579,7 @@ impl DustyContext {
                 self.quad_data.operator_config.get("param").unwrap().clone() as u32
             ),
             QuadrupleUnit::new(
-                param[0].clone(),
+                param.name.clone(),
                 0
             ),
             QuadrupleUnit::new(
@@ -755,11 +748,11 @@ fn process_pair(
                 Rule::assign => {
                     // Quad generation
                     if dusty_context.contains_id(pair.as_str()) {
-                        dusty_context.quad_data.operand_stack.push([
-                            pair.as_str().to_string(),
-                            dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string(),
-                            "regular".to_string()
-                        ]);
+                        let var = dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap();
+
+                        dusty_context.quad_data.operand_stack.push(var.clone());
+
+                        println!("{:#?}", dusty_context.quad_data.operand_stack);
                     } else {
                         panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
                     }
@@ -789,18 +782,12 @@ fn process_pair(
                 Rule::value => {
                     if dusty_context.contains_id(pair.as_str()) {
                         println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
-                        dusty_context.quad_data.operand_stack.push([
-                            pair.as_str().to_string(),
-                            dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().to_string(),
-                            "regular".to_string()
-                        ]);
+                        let var = dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().clone();
+                        dusty_context.quad_data.operand_stack.push(var);
                     } else {
                         println!("  (#1) Adding global ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
-                        dusty_context.quad_data.operand_stack.push([
-                            pair.as_str().to_string(),
-                            dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap().to_string(),
-                            "regular".to_string()
-                        ]);
+                        let var = dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap().clone();
+                        dusty_context.quad_data.operand_stack.push(var);
                     }
                     println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
                 }
@@ -851,9 +838,24 @@ fn process_pair(
                 if dusty_context.contains_id(&id) {
                     panic!("ERROR: id {} already exists in current context (typevar)", id);
                 } else {
-                    println!("Adding id {} to {} as {}", id, dusty_context.current_func, dusty_context.current_type);
-                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().insert(id.clone(), dusty_context.current_type.clone());
-                    dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().add_to_counter(&dusty_context.current_type, "regular");
+                    // Create variable Info
+                    let var_type = dusty_context.current_type.clone();
+                    let base = dusty_context.quad_data.get_memory_segment(&var_type, &dusty_context.current_func, "regular");
+                    let counter = dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().get_counter(&var_type, "regular");
+                    
+                    println!("Adding id {} to {} as {} in {}", id, dusty_context.current_func, dusty_context.current_type, base+counter);
+                    
+                    // Insert variable to function directory
+                    dusty_context.func_dir
+                        .get_mut(&dusty_context.current_func)
+                        .unwrap()
+                        .insert(id.clone(), dusty_context.current_type.clone(), base+counter, "regular".to_string());
+
+                    // Increase counter
+                    dusty_context.func_dir
+                        .get_mut(&dusty_context.current_func)
+                        .unwrap()
+                        .add_to_counter(&dusty_context.current_type, "regular");
                 }
             }
             // println!("func_dir: {:#?}", dusty_context.func_dir);
@@ -1472,11 +1474,13 @@ fn process_pair(
         (Rule::cte_int, Stage::Before) => {
             println!("  token CTE found: {:#?}", pair.as_str());
             println!("  (#1) Adding CTE to operand stack in factor");
-            dusty_context.quad_data.operand_stack.push([
+            let const_var = VarInfo::new(
                 pair.as_str().to_string(),
                 "int".to_string(),
+                0,
                 "constant".to_string()
-            ]);
+            );
+            dusty_context.quad_data.operand_stack.push(const_var);
             println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
             dusty_context.constants += 1;
             process_pair(pair, Stage::Finished, dusty_context);
@@ -1488,11 +1492,13 @@ fn process_pair(
         (Rule::cte_float, Stage::Before) => {
             println!("  token CTE_FLOAT found: {:#?}", pair.as_str());
             println!("  (#1) Adding CTE_FLOAT to operand stack in factor");
-            dusty_context.quad_data.operand_stack.push([
+            let const_var = VarInfo::new(
                 pair.as_str().to_string(),
                 "float".to_string(),
+                0,
                 "constant".to_string()
-            ]);
+            );
+            dusty_context.quad_data.operand_stack.push(const_var);
             println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1547,17 +1553,17 @@ fn process_pair(
     }
 }
 
+
+
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app6.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/app6.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
 
     match DustyParser::parse(Rule::program, &patito_file) {
         Ok(pairs) => {
-            // println!("{:#?}", pairs.into_iter().next().unwrap().into_inner());
-            // dusty_context.syntax_flow = context_pairs;
             // Go through the AST and trigger actions in certain parts
             for pair in pairs.into_iter().next().unwrap().into_inner() {
                 process_pair(
@@ -1565,7 +1571,6 @@ fn main() {
                     Stage::Before,
                     &mut dusty_context
                 );
-                // println!("{:#?}", pair.as_rule());
             }
         }
         Err(e) => {
