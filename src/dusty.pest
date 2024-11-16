@@ -14,7 +14,7 @@ body = { "{" ~ statement* ~ "}" }
 statement = { assign | condition | while_loop | func_call | print }
 condition = { ifKeyword ~ openP ~ expression ~ closeP ~ body ~ (elseKeyword ~ body)? ~ delimiter }
 while_loop = { whileKeyword ~ openP ~ expression ~ closeP ~ doKeyword ~ body ~ delimiter }
-func_call = { id ~ openP ~ expression ~ ("," ~ expression)* ~ closeP ~ delimiter }
+func_call = { id ~ openP ~ (expression ~ ("," ~ expression)*)? ~ closeP ~ delimiter }
 print = { printKeyword ~ "(" ~ print_element ~ ("," ~ print_element)* ~ ")" ~ delimiter }
 print_element = { expression | string }
 

@@ -6,5 +6,6 @@ begin
 {
   example = 10;
   print!(example);
+  print!("nice");
 }
 end

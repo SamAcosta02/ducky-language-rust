@@ -3,6 +3,8 @@ use std::{collections::{HashMap, VecDeque}, fs};
 use pest::Parser;
 use pest_derive::Parser;
 
+use colored::*;
+
 mod classes;
 mod virtual_machine;
 use classes::{
@@ -18,7 +20,8 @@ pub struct DustyParser;
 struct Resources {
     int_count: u32,
     float_count: u32,
-    temporal_count: u32,
+    temp_i_count: u32,
+    temp_f_count: u32,
 }
 
 impl Resources {
@@ -26,7 +29,8 @@ impl Resources {
         Resources {
             int_count: 0,
             float_count: 0,
-            temporal_count: 0,
+            temp_i_count: 0,
+            temp_f_count: 0
         }
     }
 }
@@ -37,6 +41,7 @@ struct FunctionInfo {
     location: u32,
     resources: Resources,
     vars: HashMap<String, VarInfo>,
+    params: Vec<String>
 }
 
 impl FunctionInfo {
@@ -46,6 +51,7 @@ impl FunctionInfo {
             location,
             resources: Resources::new(),
             vars: HashMap::new(),
+            params: Vec::new()
         }
     }
 
@@ -62,8 +68,8 @@ impl FunctionInfo {
         match (var_type, kind) {
             ("int", "regular") => self.resources.int_count,
             ("float", "regular") => self.resources.float_count,
-            ("int", "temporal") => self.resources.temporal_count,
-            ("float", "temporal") => self.resources.temporal_count,
+            ("int", "temporal") => self.resources.temp_i_count,
+            ("float", "temporal") => self.resources.temp_f_count,
             _ => 9999
         }
     }
@@ -72,14 +78,18 @@ impl FunctionInfo {
         match (var_type, kind) {
             ("int", "regular") => self.resources.int_count += 1,
             ("float", "regular") => self.resources.float_count += 1,
-            ("int", "temporal") => self.resources.temporal_count += 1,
-            ("float", "temporal") => self.resources.temporal_count += 1,
+            ("int", "temporal") => self.resources.temp_i_count += 1,
+            ("float", "temporal") => self.resources.temp_f_count += 1,
             _ => {}
         }
     }
 
     fn insert(&mut self, key: String, var_type: String, memory: u32) {
        self.vars.insert(key.clone(), VarInfo::new(key, var_type, memory));
+    }
+
+    fn add_param(&mut self, param: String) {
+        self.params.push(param);
     }
 }
 
@@ -187,7 +197,7 @@ struct QuadData {
     param_counter: usize,
     temp_counter: usize,
     semantic_cube: SemanticCube,
-    memmory_config: [[u32; 2]; 9],
+    memmory_config: [[u32; 2]; 11],
     operator_config: HashMap<String, usize>
 }
 
@@ -198,22 +208,24 @@ impl QuadData {
             operand_stack: Vec::new(),
             jump_stack: Vec::new(),
             quad_counter: 1,
-            param_counter: 1,
+            param_counter: 0,
             temp_counter: 1,
             semantic_cube: SemanticCube::new(),
             memmory_config: [
                 // ---- Global ----
                 [1000, 2999], // 0. Ints
                 [3000, 4999], // 1. Floats
-                [5000, 6999], // 2. Temporal
+                [5000, 6999], // 2. Temporal Intss
+                [7000, 8999], // 3. Temporal Floats
                 // ---- Local ----
-                [11000, 12999], // 3. Ints
-                [13000, 14999], // 4. Floats
-                [15000, 16999], // 5. Temporal
+                [11000, 12999], // 4. Ints
+                [13000, 14999], // 5. Floats
+                [15000, 16999], // 6. Temporal Ints
+                [17000, 18999], // 7. Temporal Floats
                 // ---- Constants ----
-                [21000, 22999], // 6. Ints
-                [23000, 24999], // 7. Floats
-                [25000, 26999], // 8. Strings
+                [21000, 22999], // 8. Ints
+                [23000, 24999], // 9. Floats
+                [25000, 26999], // 10. Strings
             ],
             operator_config: {
                 let mut map = HashMap::new();
@@ -244,14 +256,14 @@ impl QuadData {
             ("int", "global", "regular") => self.memmory_config[0][0],
             ("float", "global", "regular") => self.memmory_config[1][0],
             ("int", "global", "temporal") => self.memmory_config[2][0],
-            ("float", "global", "temporal") => self.memmory_config[2][0],
-            ("int", _, "regular") => self.memmory_config[3][0],
-            ("float", _, "regular") => self.memmory_config[4][0],
-            ("int", _, "temporal") => self.memmory_config[5][0],
-            ("float", _, "temporal") => self.memmory_config[5][0],
-            ("int", _, "constant") => self.memmory_config[6][0],
-            ("float", _, "constant") => self.memmory_config[7][0],
-            ("string", _, "constant") => self.memmory_config[8][0],
+            ("float", "global", "temporal") => self.memmory_config[3][0],
+            ("int", _, "regular") => self.memmory_config[4][0],
+            ("float", _, "regular") => self.memmory_config[5][0],
+            ("int", _, "temporal") => self.memmory_config[6][0],
+            ("float", _, "temporal") => self.memmory_config[7][0],
+            ("int", _, "constant") => self.memmory_config[8][0],
+            ("float", _, "constant") => self.memmory_config[9][0],
+            ("string", _, "constant") => self.memmory_config[10][0],
             _ => 999999
         }
     }
@@ -268,7 +280,7 @@ struct DustyContext {
     id_stack: Vec<String>,
     quad_data: QuadData,
     quadruples: VecDeque<[QuadrupleUnit; 4]>,
-    constants: [u32; 2]
+    constants: [u32; 3]
 }
 
 impl DustyContext {
@@ -283,7 +295,7 @@ impl DustyContext {
             current_type: String::new(),
             quad_data: QuadData::new(),
             quadruples: VecDeque::new(),
-            constants: [0,0]
+            constants: [0,0,0]
         }
     }
 
@@ -423,6 +435,11 @@ impl DustyContext {
     }
 
     fn generate_gotof_quad(&mut self) {
+        // Check if top of operand stack is a int
+        if self.quad_data.operand_stack.last().unwrap().var_type != "int" {
+            panic!("ERROR: Expected int but got {}", self.quad_data.operand_stack.last().unwrap().var_type);
+        }
+
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "gotof".to_string(),
@@ -534,8 +551,20 @@ impl DustyContext {
         self.quad_data.quad_counter += 1;
     }
 
-    fn generate_param_quad(&mut self) {
+    fn generate_param_quad(&mut self) { 
         let param = self.quad_data.operand_stack.last().unwrap();
+
+        // Check for parameter overflow
+        if self.quad_data.param_counter > self.func_dir.get(&self.current_call).unwrap().params.len() {
+            panic!("ERROR: Too many parameters for function \"{}\"", self.current_call);
+        }
+
+        // Check current parameter type
+        let var_type = &self.func_dir.get(&self.current_call).unwrap().params[self.quad_data.param_counter];
+        if param.var_type != *var_type {
+            panic!("ERROR: Type mismatch. Expected {} but got {}", var_type, param.var_type);
+        }
+
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "param".to_string(),
@@ -722,6 +751,11 @@ fn process_pair(
                 }
                 Rule::func_call => {
                     // println!("  Generate GOSUB quad to call function"); // #8 Generate GOSUB quad to call function
+                    if !dusty_context.func_dir.contains_key(pair.as_str()) {
+                        let function_name = pair.as_str();
+                        let error_message = format!("ERROR: Function \"{}\" was not declared", function_name.red());
+                        panic!("{:}", error_message.red());
+                    }
                     dusty_context.current_call = pair.as_str().to_string();
                     dusty_context.generate_era_quad(pair.as_str());
                 }
@@ -826,6 +860,12 @@ fn process_pair(
         }
         (Rule::typeVar, Stage::After) => {
             // println!("\n");
+            match dusty_context.parent_rules.last().unwrap() {
+                Rule::id_type_list => {
+                   dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().add_param(dusty_context.current_type.clone());
+                }
+                _ => {}
+            }
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process typeVar ---------------------------------
@@ -934,7 +974,7 @@ fn process_pair(
         (Rule::func_call, Stage::After) => {
             // println!("\n");
             dusty_context.parent_rules.pop();
-            dusty_context.quad_data.param_counter = 1;
+            dusty_context.quad_data.param_counter = 0;
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process func_call -------------------------------
@@ -1401,6 +1441,17 @@ fn process_pair(
                 }
                 Rule::func_call => {
                     // println!("  (#?) Generate GOSUB quad to call function");
+                    // Check for correct number of parameters
+                    if dusty_context.quad_data.param_counter != dusty_context.func_dir.get(&dusty_context.current_call).unwrap().params.len() {
+                        let error_message = format!("ERROR: Function \"{}\" was called with {} parameters, expected {}. Line: {}, Col: {}",
+                            dusty_context.current_call.red(),
+                            dusty_context.quad_data.param_counter,
+                            dusty_context.func_dir.get(&dusty_context.current_call).unwrap().params.len(),
+                            pair.as_span().start_pos().line_col().0,
+                            pair.as_span().start_pos().line_col().1
+                        );
+                        panic!("{:}", error_message.red());
+                    } 
                     dusty_context.generate_gosub_quad();
                 }
                 Rule::funcs => {
@@ -1483,6 +1534,27 @@ fn process_pair(
         // Process cte_float -------------------------------
 
 
+        // Process string ----------------------------------
+        (Rule::string, Stage::Before) => {
+            println!("  token STRING found: {:#?}", pair.as_str());
+            if dusty_context.const_dir.contains_key(pair.as_str()) {
+                let const_var = dusty_context.const_dir.get(pair.as_str()).unwrap().clone();
+                dusty_context.quad_data.operand_stack.push(const_var);
+            } else {
+                let const_var = VarInfo::new(
+                    pair.as_str().to_string().trim_matches('\"').to_string(),
+                    "string".to_string(),
+                    dusty_context.quad_data.get_memory_segment("string", "global", "constant") + dusty_context.constants[2],
+                );
+                dusty_context.const_dir.insert(pair.as_str().to_string().trim_matches('\"').to_string(), const_var.clone());
+                dusty_context.quad_data.operand_stack.push(const_var);
+                dusty_context.constants[2] += 1;
+            }
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process string ----------------------------------
+
+
         // Process delimiter -------------------------------
         (Rule::delimiter, Stage::Before) => {
             // println!("  token DELIMITER found: {:#?}", pair.as_str());
@@ -1533,7 +1605,7 @@ fn process_pair(
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app7.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app4.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
