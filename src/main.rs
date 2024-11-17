@@ -9,7 +9,7 @@ mod classes;
 mod virtual_machine;
 use classes::{
     quadruple_unit::QuadrupleUnit,
-    var_info::VarInfo, virtual_memory,
+    var_info::VarInfo,
 };
 
 #[derive(Parser)]
@@ -1649,7 +1649,8 @@ fn virtual_machine(dusty_context: &DustyContext) {
     let mut virtual_memory:HashMap<u32, Value> = HashMap::new();
     fill_constants(&mut virtual_memory, &dusty_context.const_dir);
     let mut instruction_pointer = 0;
-
+    
+    println!("######## OUTPUT #######\n");
     while instruction_pointer < dusty_context.quadruples.len() {
         let quadruple = dusty_context.quadruples[instruction_pointer].clone();
         let operator = &quadruple[0].name;
@@ -1657,10 +1658,10 @@ fn virtual_machine(dusty_context: &DustyContext) {
         match operator.as_str() {
             "goto" => {
                 instruction_pointer = quadruple[3].memory as usize-1;
-                // print!("GOTO {}", instruction_pointer);
+                println!("goto");
             }
             "=" => {
-                // println!("Assign");
+                println!("Assign");
                 let assign_location = quadruple[3].memory;
                 let assign_value = quadruple[1].memory;
                 match get_type(assign_value).to_string().as_str() {
@@ -1670,6 +1671,7 @@ fn virtual_machine(dusty_context: &DustyContext) {
                         }
                     }
                     "float" => {
+                        println!("{}", assign_value);
                         if let Value::Vfloat(val) = virtual_memory.get(&assign_value).unwrap() {
                             virtual_memory.insert(assign_location, Value::Vfloat(val.clone()));
                         }
@@ -1699,11 +1701,107 @@ fn virtual_machine(dusty_context: &DustyContext) {
                 }
                 instruction_pointer += 1;
             }
+            "+" => {
+                let left = quadruple[1].memory;
+                let right = quadruple[2].memory;
+                let assign_location = quadruple[3].memory;
+                match get_type(left).to_string().as_str() {
+                    "int" => {
+                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vint(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vint(left_val + right_val));
+                            }
+                        }
+                    }
+                    "float" => {
+                        if let Value::Vfloat(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vfloat(left_val + right_val));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                instruction_pointer += 1;
+            }
+            "-" => {
+                let left = quadruple[1].memory;
+                let right = quadruple[2].memory;
+                let assign_location = quadruple[3].memory;
+                match get_type(left).to_string().as_str() {
+                    "int" => {
+                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vint(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vint(left_val - right_val));
+                            }
+                        }
+                    }
+                    "float" => {
+                        if let Value::Vfloat(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vfloat(left_val - right_val));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                instruction_pointer += 1;
+            }
+            "*" => {
+                let left = quadruple[1].memory;
+                let right = quadruple[2].memory;
+                let assign_location = quadruple[3].memory;
+                match get_type(left).to_string().as_str() {
+                    "int" => {
+                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vint(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vint(left_val * right_val));
+                            }
+                        }
+                    }
+                    "float" => {
+                        if let Value::Vfloat(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vfloat(left_val * right_val));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                instruction_pointer += 1;
+            }
+            "/" => {
+                let left = quadruple[1].memory;
+                let right = quadruple[2].memory;
+                let assign_location = quadruple[3].memory;
+                println!("{} {} {}", left, right, assign_location);
+                match get_type(assign_location).to_string().as_str() {
+                    "int" => {
+                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
+                            if let Value::Vint(right_val) = virtual_memory.get(&left).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vint(left_val / right_val));
+                            }
+                        }
+                    }
+                    "float" => {
+                        if let Value::Vfloat(left_val) = virtual_memory.get(&right).unwrap() {
+                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
+                                virtual_memory.insert(assign_location, Value::Vfloat(left_val / right_val));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                instruction_pointer += 1;
+            }
             _ => {instruction_pointer += 1;}
         }
+        println!("+++++++++++++++++++++++++++++++++++++++++++++");
+        println!("{:#?}", virtual_memory);
+        println!("+++++++++++++++++++++++++++++++++++++++++++++");
     }
-    println!("\n\n#### END OF OUTPUT ####");
-    println!("{:#?}", virtual_memory);
+    
+    println!("\n#### END OF OUTPUT ####");
 }
 
 fn main() {
@@ -1740,9 +1838,8 @@ fn main() {
     println!(" ---------- QUADRUPLES AS MEMORY ---------- ");
     dusty_context.print_quadruples_as_memmory();
 
-    println!("#");
-    println!("#");
-    println!("#");
-    println!("######## OUTPUT #######\n");
+    println!("");
+    println!("");
+    println!("");
     virtual_machine(&dusty_context);
 }
