@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, fs, hash::Hash};
+use std::{collections::{HashMap, VecDeque}, fs, hash::Hash, iter::Inspect};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -741,6 +741,12 @@ fn process_pair(
                     // Quad generation
                     if dusty_context.contains_id(pair.as_str()) {
                         let var = dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap();
+
+                        dusty_context.quad_data.operand_stack.push(var.clone());
+
+                        // println!("{:#?}", dusty_context.quad_data.operand_stack);
+                    } else if dusty_context.id_in_global_scope(pair.as_str()) {
+                        let var = dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap();
 
                         dusty_context.quad_data.operand_stack.push(var.clone());
 
@@ -1612,6 +1618,8 @@ struct GlobalMemory {
     int_consts: Vec<i32>,
     float_consts: Vec<f32>,
     string_const: Vec<String>,
+    memory_stack: Vec<LocalMemory>,
+    jump_stack: Vec<usize>,
 }
 
 impl GlobalMemory {
@@ -1624,10 +1632,13 @@ impl GlobalMemory {
             int_consts: vec![std::i32::MIN; ic_size],
             float_consts: vec![std::f32::MIN; fc_size],
             string_const: vec!["".to_string(); sc_size],
+            memory_stack: Vec::new(),
+            jump_stack: Vec::new(),
         }
     }
 }
 
+#[derive(Debug)]
 struct LocalMemory {
     ints: Vec<i32>,
     int_temps: Vec<i32>,
@@ -1646,11 +1657,18 @@ impl LocalMemory {
     }
 }
 
+#[derive(Debug)]
 enum MemorySegment {
     Ints,
     IntTemps,
     Floats,
     FloatTemps,
+
+    IntLocal,
+    FloatLocal,
+    IntLocalTemps,
+    FloatLocalTemps,
+
     IntConsts,
     FloatConsts,
     StringConsts,
@@ -1662,6 +1680,12 @@ fn map_address(address: usize) -> Option<(MemorySegment, usize)> {
         3000..=4999 => Some((MemorySegment::Floats, address - 3000)),
         5000..=6999 => Some((MemorySegment::IntTemps, address - 5000)),
         7000..=8999 => Some((MemorySegment::FloatTemps, address - 7000)),
+
+        11000..=12999 => Some((MemorySegment::IntLocal, address - 11000)),
+        13000..=14999 => Some((MemorySegment::FloatLocal, address - 13000)),
+        15000..=16999 => Some((MemorySegment::IntLocalTemps, address - 15000)),
+        17000..=18999 => Some((MemorySegment::FloatLocalTemps, address - 17000)),
+
         21000..=22999 => Some((MemorySegment::IntConsts, address - 21000)),
         23000..=24999 => Some((MemorySegment::FloatConsts, address - 23000)),
         25000..=26999 => Some((MemorySegment::StringConsts, address - 25000)),
@@ -1676,6 +1700,12 @@ fn get_value(memory: &GlobalMemory, address: usize) -> Option<(String, &'static 
             MemorySegment::Floats => Some((memory.floats[offset].to_string(), "float")),
             MemorySegment::IntTemps => Some((memory.int_temps[offset].to_string(), "int")),
             MemorySegment::FloatTemps => Some((memory.float_temps[offset].to_string(), "float")),
+
+            MemorySegment::IntLocal => Some((memory.memory_stack.last().unwrap().ints[offset].to_string(), "int")),
+            MemorySegment::FloatLocal => Some((memory.memory_stack.last().unwrap().floats[offset].to_string(), "float")),
+            MemorySegment::IntLocalTemps => Some((memory.memory_stack.last().unwrap().int_temps[offset].to_string(), "int")),
+            MemorySegment::FloatLocalTemps => Some((memory.memory_stack.last().unwrap().float_temps[offset].to_string(), "float")),
+
             MemorySegment::IntConsts => Some((memory.int_consts[offset].to_string(), "int")),
             MemorySegment::FloatConsts => Some((memory.float_consts[offset].to_string(), "float")),
             MemorySegment::StringConsts => Some((memory.string_const[offset].to_string(), "string")),
@@ -1693,6 +1723,12 @@ fn set_value(memory: &mut GlobalMemory, address: usize, value: String) {
             MemorySegment::Floats => memory.floats[offset] = value.parse().unwrap(),
             MemorySegment::IntTemps => memory.int_temps[offset] = value.parse().unwrap(),
             MemorySegment::FloatTemps => memory.float_temps[offset] = value.parse().unwrap(),
+
+            MemorySegment::IntLocal => memory.memory_stack.last_mut().unwrap().ints[offset] = value.parse().unwrap(),
+            MemorySegment::FloatLocal => memory.memory_stack.last_mut().unwrap().floats[offset] = value.parse().unwrap(),
+            MemorySegment::IntLocalTemps => memory.memory_stack.last_mut().unwrap().int_temps[offset] = value.parse().unwrap(),
+            MemorySegment::FloatLocalTemps => memory.memory_stack.last_mut().unwrap().float_temps[offset] = value.parse().unwrap(),
+
             MemorySegment::IntConsts => {
                 // IntConsts are usually immutable, handle this as an error if necessary
                 panic!("Cannot modify constants");
@@ -1704,6 +1740,14 @@ fn set_value(memory: &mut GlobalMemory, address: usize, value: String) {
         }
     } else {
         panic!("Invalid address");
+    }
+}
+
+fn set_param_value(memory: &mut GlobalMemory, address: usize, value: String) {
+    if address < 13000 {
+        memory.memory_stack.last_mut().unwrap().ints[address] = value.parse().unwrap();
+    } else {
+        memory.memory_stack.last_mut().unwrap().floats[address] = value.parse().unwrap();
     }
 }
 
@@ -1745,6 +1789,15 @@ fn bool_to_int(value: bool) -> i32 {
     }
 }
 
+fn allocate_to_stack(virtual_memory: &mut GlobalMemory, dusty_context: &DustyContext, func_name: &str) {
+    virtual_memory.memory_stack.push(LocalMemory::new(
+        dusty_context.func_dir.get(func_name).unwrap().resources.int_count as usize,
+        dusty_context.func_dir.get(func_name).unwrap().resources.temp_i_count as usize,
+        dusty_context.func_dir.get(func_name).unwrap().resources.float_count as usize,
+        dusty_context.func_dir.get(func_name).unwrap().resources.temp_f_count as usize,
+    ));
+}
+
 fn virtual_machine(dusty_context: &DustyContext) {
     let main_memory_size = get_memory_size_main(
         dusty_context.func_dir.get("global").unwrap(),
@@ -1760,8 +1813,6 @@ fn virtual_machine(dusty_context: &DustyContext) {
         main_memory_size[6]
     );
     fill_consts(&dusty_context.const_dir, &mut virtual_memory);
-
-    // let program_stack: Vec<LocalMemory> = Vec::new();
 
     let mut intruction_pointer = 0;
 
@@ -1785,6 +1836,26 @@ fn virtual_machine(dusty_context: &DustyContext) {
                 } else {
                     intruction_pointer += 1;
                 }
+            }
+            "era" => {
+                allocate_to_stack(&mut virtual_memory, dusty_context, quadruple[3].name.as_str());
+                intruction_pointer += 1;
+            }
+            "param" => {
+                let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                set_param_value(&mut virtual_memory, quadruple[3].memory as usize, value);
+                intruction_pointer += 1;
+            }
+            "gosub" => {
+                let current_pointer = intruction_pointer + 1;
+                virtual_memory.jump_stack.push(current_pointer);
+                intruction_pointer = quadruple[3].memory as usize - 1;
+                // println!("GOSUB: {}", quadruple[3].memory - 1);
+            }
+            "endfunc" => {
+                // println!("ENDFUNC");
+                let return_pointer = virtual_memory.jump_stack.pop().unwrap();
+                intruction_pointer = return_pointer;
             }
             "=" => {
                 // println!("{:#?}", quadruple);
