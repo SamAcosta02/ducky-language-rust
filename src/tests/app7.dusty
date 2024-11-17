@@ -5,7 +5,6 @@ vars example:int;
 begin
 {
   example = 10;
-  print!(example);
-  print!("nice");
+  print!("This is your example: ", example);
 }
 end

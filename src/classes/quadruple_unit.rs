@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QuadrupleUnit {
     pub name: String,
     pub memory: u32,

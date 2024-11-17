@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, fs};
+use std::{collections::{HashMap, VecDeque}, fs, hash::Hash};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -9,7 +9,7 @@ mod classes;
 mod virtual_machine;
 use classes::{
     quadruple_unit::QuadrupleUnit,
-    var_info::VarInfo
+    var_info::VarInfo, virtual_memory,
 };
 
 #[derive(Parser)]
@@ -1603,9 +1603,112 @@ fn process_pair(
     }
 }
 
+#[derive(Debug)]
+enum Value {
+    Vint(i32),
+    Vfloat(f32),
+    Vstring(String),
+}
+
+fn fill_constants(virtual_memory: &mut HashMap<u32, Value>, const_dir: &HashMap<String, VarInfo>) {
+    for (_, value) in const_dir {
+        let const_info = value.clone();
+        match const_info.var_type.as_str() {
+            "int" => {
+                virtual_memory.insert(const_info.location, Value::Vint(const_info.name.parse().unwrap()));
+            }
+            "float" => {
+                virtual_memory.insert(const_info.location, Value::Vfloat(const_info.name.parse().unwrap()));
+            }
+            "string" => {
+                virtual_memory.insert(const_info.location, Value::Vstring(const_info.name.parse().unwrap()));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn get_type(memory: u32) -> String {
+    match memory {
+        1000..=2999 => "int".to_string(),
+        3000..=4999 => "float".to_string(),
+        5000..=6999 => "int".to_string(),
+        7000..=8999 => "float".to_string(),
+        11000..=12999 => "int".to_string(),
+        13000..=14999 => "float".to_string(),
+        15000..=16999 => "int".to_string(),
+        17000..=18999 => "float".to_string(),
+        21000..=22999 => "int".to_string(),
+        23000..=24999 => "float".to_string(),
+        25000..=26999 => "string".to_string(),
+        _ => panic!("ERROR: Memory segment not found"),
+    }
+}
+
+fn virtual_machine(dusty_context: &DustyContext) {
+    let mut virtual_memory:HashMap<u32, Value> = HashMap::new();
+    fill_constants(&mut virtual_memory, &dusty_context.const_dir);
+    let mut instruction_pointer = 0;
+
+    while instruction_pointer < dusty_context.quadruples.len() {
+        let quadruple = dusty_context.quadruples[instruction_pointer].clone();
+        let operator = &quadruple[0].name;
+        // println!("{:#?}", operator);
+        match operator.as_str() {
+            "goto" => {
+                instruction_pointer = quadruple[3].memory as usize-1;
+                // print!("GOTO {}", instruction_pointer);
+            }
+            "=" => {
+                // println!("Assign");
+                let assign_location = quadruple[3].memory;
+                let assign_value = quadruple[1].memory;
+                match get_type(assign_value).to_string().as_str() {
+                    "int" => {
+                        if let Value::Vint(val) = virtual_memory.get(&assign_value).unwrap() {
+                            virtual_memory.insert(assign_location, Value::Vint(val.clone()));
+                        }
+                    }
+                    "float" => {
+                        if let Value::Vfloat(val) = virtual_memory.get(&assign_value).unwrap() {
+                            virtual_memory.insert(assign_location, Value::Vfloat(val.clone()));
+                        }
+                    }
+                    "string" => {
+                        if let Value::Vstring(val) = virtual_memory.get(&assign_value).unwrap() {
+                            virtual_memory.insert(assign_location, Value::Vstring(val.clone()));
+                        }
+                    }
+                    _ => {}
+                }
+                instruction_pointer += 1;
+            }
+            "print" => {
+                let print_location = quadruple[3].memory;
+                let print_value_enum = virtual_memory.get(&print_location).unwrap();
+                match print_value_enum {
+                    Value::Vint(val) => {
+                        println!("{}", val);
+                    }
+                    Value::Vfloat(val) => {
+                        println!("{}", val);
+                    }
+                    Value::Vstring(val) => {
+                        println!("{}", val);
+                    }
+                }
+                instruction_pointer += 1;
+            }
+            _ => {instruction_pointer += 1;}
+        }
+    }
+    println!("\n\n#### END OF OUTPUT ####");
+    println!("{:#?}", virtual_memory);
+}
+
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app4.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app7.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
@@ -1631,6 +1734,7 @@ fn main() {
 
     println!("{:#?}", dusty_context.func_dir);
     println!("{:#?}", dusty_context.const_dir);
+    println!("{:#?}", dusty_context.constants);
     println!(" ---------- QUADRUPLES AS NAME ---------- ");
     dusty_context.print_quadruples_as_name();
     println!(" ---------- QUADRUPLES AS MEMORY ---------- ");
@@ -1639,5 +1743,6 @@ fn main() {
     println!("#");
     println!("#");
     println!("#");
-    println!("#### OUTPUT ####");
+    println!("######## OUTPUT #######\n");
+    virtual_machine(&dusty_context);
 }
