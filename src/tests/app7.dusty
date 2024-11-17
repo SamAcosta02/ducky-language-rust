@@ -1,13 +1,13 @@
 program real_test;
 
-vars example:int; example2:float;
+vars example:int;
 
 begin
 {
-  example = 10;
-  print!(example);
-  example2 = example / 2;
-  print!(example);
-  
+  valor = 5;
+  while (valor > 0) do {
+    print!(valor);
+    valor = valor - 1;
+  };
 }
 end

@@ -9,7 +9,7 @@ mod classes;
 mod virtual_machine;
 use classes::{
     quadruple_unit::QuadrupleUnit,
-    var_info::VarInfo,
+    var_info::VarInfo, virtual_memory,
 };
 
 #[derive(Parser)]
@@ -1604,204 +1604,298 @@ fn process_pair(
 }
 
 #[derive(Debug)]
-enum Value {
-    Vint(i32),
-    Vfloat(f32),
-    Vstring(String),
+struct GlobalMemory {
+    ints: Vec<i32>,
+    int_temps: Vec<i32>,
+    floats: Vec<f32>,
+    float_temps: Vec<f32>,
+    int_consts: Vec<i32>,
+    float_consts: Vec<f32>,
+    string_const: Vec<String>,
 }
 
-fn fill_constants(virtual_memory: &mut HashMap<u32, Value>, const_dir: &HashMap<String, VarInfo>) {
-    for (_, value) in const_dir {
-        let const_info = value.clone();
-        match const_info.var_type.as_str() {
+impl GlobalMemory {
+    fn new(i_size: usize, it_size: usize, f_size: usize, ft_size: usize, ic_size: usize, fc_size: usize, sc_size: usize) -> GlobalMemory {
+        GlobalMemory {
+            ints: vec![std::i32::MIN; i_size],
+            int_temps: vec![std::i32::MIN; it_size],
+            floats: vec![std::f32::MIN; f_size],
+            float_temps: vec![std::f32::MIN; ft_size],
+            int_consts: vec![std::i32::MIN; ic_size],
+            float_consts: vec![std::f32::MIN; fc_size],
+            string_const: vec!["".to_string(); sc_size],
+        }
+    }
+}
+
+struct LocalMemory {
+    ints: Vec<i32>,
+    int_temps: Vec<i32>,
+    floats: Vec<f32>,
+    float_temps: Vec<f32>,
+}
+
+impl LocalMemory {
+    fn new(i_size: usize, it_size: usize, f_size: usize, ft_size: usize) -> LocalMemory {
+        LocalMemory {
+            ints: vec![std::i32::MIN; i_size],
+            int_temps: vec![std::i32::MIN; it_size],
+            floats: vec![std::f32::MIN; f_size],
+            float_temps: vec![std::f32::MIN; ft_size],
+        }
+    }
+}
+
+enum MemorySegment {
+    Ints,
+    IntTemps,
+    Floats,
+    FloatTemps,
+    IntConsts,
+    FloatConsts,
+    StringConsts,
+}
+
+fn map_address(address: usize) -> Option<(MemorySegment, usize)> {
+    match address {
+        1000..=2999 => Some((MemorySegment::Ints, address - 1000)),
+        3000..=4999 => Some((MemorySegment::Floats, address - 3000)),
+        5000..=6999 => Some((MemorySegment::IntTemps, address - 5000)),
+        7000..=8999 => Some((MemorySegment::FloatTemps, address - 7000)),
+        21000..=22999 => Some((MemorySegment::IntConsts, address - 21000)),
+        23000..=24999 => Some((MemorySegment::FloatConsts, address - 23000)),
+        25000..=26999 => Some((MemorySegment::StringConsts, address - 25000)),
+        _ => None, // Address out of bounds
+    }
+}
+
+fn get_value(memory: &GlobalMemory, address: usize) -> Option<(String, &'static str)> {
+    if let Some((segment, offset)) = map_address(address) {
+        match segment {
+            MemorySegment::Ints => Some((memory.ints[offset].to_string(), "int")),
+            MemorySegment::Floats => Some((memory.floats[offset].to_string(), "float")),
+            MemorySegment::IntTemps => Some((memory.int_temps[offset].to_string(), "int")),
+            MemorySegment::FloatTemps => Some((memory.float_temps[offset].to_string(), "float")),
+            MemorySegment::IntConsts => Some((memory.int_consts[offset].to_string(), "int")),
+            MemorySegment::FloatConsts => Some((memory.float_consts[offset].to_string(), "float")),
+            MemorySegment::StringConsts => Some((memory.string_const[offset].to_string(), "string")),
+        }
+    } else {
+        None // Invalid address
+    }
+}
+
+
+fn set_value(memory: &mut GlobalMemory, address: usize, value: String) {
+    if let Some((segment, offset)) = map_address(address) {
+        match segment {
+            MemorySegment::Ints => memory.ints[offset] = value.parse().unwrap(),
+            MemorySegment::Floats => memory.floats[offset] = value.parse().unwrap(),
+            MemorySegment::IntTemps => memory.int_temps[offset] = value.parse().unwrap(),
+            MemorySegment::FloatTemps => memory.float_temps[offset] = value.parse().unwrap(),
+            MemorySegment::IntConsts => {
+                // IntConsts are usually immutable, handle this as an error if necessary
+                panic!("Cannot modify constants");
+            }
+            MemorySegment::FloatConsts => {
+                panic!("Cannot modify constants");
+            }
+            MemorySegment::StringConsts => memory.string_const[offset] = value,
+        }
+    } else {
+        panic!("Invalid address");
+    }
+}
+
+fn get_memory_size_main(function_info: &FunctionInfo, const_count: [u32; 3]) -> [usize; 7] {
+    [
+        function_info.resources.int_count as usize,
+        function_info.resources.temp_i_count as usize,
+        function_info.resources.float_count as usize,
+        function_info.resources.temp_f_count as usize,
+        const_count[0] as usize,
+        const_count[1] as usize,
+        const_count[2] as usize,
+    ]
+}
+
+fn fill_consts(const_dir: &HashMap<String, VarInfo>, virtual_memory: &mut GlobalMemory) {
+    for (key, value) in const_dir {
+        let memory = value.location as usize;
+        match value.var_type.as_str() {
             "int" => {
-                virtual_memory.insert(const_info.location, Value::Vint(const_info.name.parse().unwrap()));
+                virtual_memory.int_consts[memory - 21000] = key.parse::<i32>().unwrap();
             }
             "float" => {
-                virtual_memory.insert(const_info.location, Value::Vfloat(const_info.name.parse().unwrap()));
+                virtual_memory.float_consts[memory - 23000] = key.parse::<f32>().unwrap();
             }
             "string" => {
-                virtual_memory.insert(const_info.location, Value::Vstring(const_info.name.parse().unwrap()));
+                virtual_memory.string_const[memory - 25000] = key.clone();
             }
             _ => {}
         }
     }
 }
 
-fn get_type(memory: u32) -> String {
-    match memory {
-        1000..=2999 => "int".to_string(),
-        3000..=4999 => "float".to_string(),
-        5000..=6999 => "int".to_string(),
-        7000..=8999 => "float".to_string(),
-        11000..=12999 => "int".to_string(),
-        13000..=14999 => "float".to_string(),
-        15000..=16999 => "int".to_string(),
-        17000..=18999 => "float".to_string(),
-        21000..=22999 => "int".to_string(),
-        23000..=24999 => "float".to_string(),
-        25000..=26999 => "string".to_string(),
-        _ => panic!("ERROR: Memory segment not found"),
+fn bool_to_int(value: bool) -> i32 {
+    if value {
+        1
+    } else {
+        0
     }
 }
 
 fn virtual_machine(dusty_context: &DustyContext) {
-    let mut virtual_memory:HashMap<u32, Value> = HashMap::new();
-    fill_constants(&mut virtual_memory, &dusty_context.const_dir);
-    let mut instruction_pointer = 0;
-    
-    println!("######## OUTPUT #######\n");
-    while instruction_pointer < dusty_context.quadruples.len() {
-        let quadruple = dusty_context.quadruples[instruction_pointer].clone();
+    let main_memory_size = get_memory_size_main(
+        dusty_context.func_dir.get("global").unwrap(),
+        dusty_context.constants,
+    );
+    let mut virtual_memory = GlobalMemory::new(
+        main_memory_size[0], 
+        main_memory_size[1], 
+        main_memory_size[2], 
+        main_memory_size[3], 
+        main_memory_size[4], 
+        main_memory_size[5], 
+        main_memory_size[6]
+    );
+    fill_consts(&dusty_context.const_dir, &mut virtual_memory);
+
+    // let program_stack: Vec<LocalMemory> = Vec::new();
+
+    let mut intruction_pointer = 0;
+
+    println!("{:#?}", virtual_memory);
+
+    println!("################### OUTPUT WINDOW ###################\n");
+    while intruction_pointer < dusty_context.quadruples.len() {
+        let quadruple = &dusty_context.quadruples[intruction_pointer];
         let operator = &quadruple[0].name;
-        // println!("{:#?}", operator);
-        match operator.as_str() {
+        // println!("POINTER: {}", intruction_pointer);
+        match operator.to_string().as_str() {
             "goto" => {
-                instruction_pointer = quadruple[3].memory as usize-1;
-                println!("goto");
+                intruction_pointer = quadruple[3].memory as usize - 1;
+                // println!("GOTO: {}", quadruple[3].memory - 1);
+            }
+            "gotof" => {
+                let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                if value == "0" {
+                    intruction_pointer = quadruple[3].memory as usize;
+                    // println!("GOTOF: {}", intruction_pointer);
+                } else {
+                    intruction_pointer += 1;
+                }
             }
             "=" => {
-                println!("Assign");
-                let assign_location = quadruple[3].memory;
-                let assign_value = quadruple[1].memory;
-                match get_type(assign_value).to_string().as_str() {
-                    "int" => {
-                        if let Value::Vint(val) = virtual_memory.get(&assign_value).unwrap() {
-                            virtual_memory.insert(assign_location, Value::Vint(val.clone()));
-                        }
-                    }
-                    "float" => {
-                        println!("{}", assign_value);
-                        if let Value::Vfloat(val) = virtual_memory.get(&assign_value).unwrap() {
-                            virtual_memory.insert(assign_location, Value::Vfloat(val.clone()));
-                        }
-                    }
-                    "string" => {
-                        if let Value::Vstring(val) = virtual_memory.get(&assign_value).unwrap() {
-                            virtual_memory.insert(assign_location, Value::Vstring(val.clone()));
-                        }
-                    }
-                    _ => {}
-                }
-                instruction_pointer += 1;
-            }
-            "print" => {
-                let print_location = quadruple[3].memory;
-                let print_value_enum = virtual_memory.get(&print_location).unwrap();
-                match print_value_enum {
-                    Value::Vint(val) => {
-                        println!("{}", val);
-                    }
-                    Value::Vfloat(val) => {
-                        println!("{}", val);
-                    }
-                    Value::Vstring(val) => {
-                        println!("{}", val);
-                    }
-                }
-                instruction_pointer += 1;
+                // println!("{:#?}", quadruple);
+                let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, value);
+                intruction_pointer += 1;
             }
             "+" => {
-                let left = quadruple[1].memory;
-                let right = quadruple[2].memory;
-                let assign_location = quadruple[3].memory;
-                match get_type(left).to_string().as_str() {
-                    "int" => {
-                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vint(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vint(left_val + right_val));
-                            }
-                        }
-                    }
-                    "float" => {
-                        if let Value::Vfloat(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vfloat(left_val + right_val));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                instruction_pointer += 1;
+                let (left_value, left_type) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, right_type) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                let result = if left_type == "float" || right_type == "float" {
+                    // Coerce to float if either operand is a float
+                    let left = left_value.parse::<f32>().unwrap();
+                    let right = right_value.parse::<f32>().unwrap();
+                    (left + right).to_string()
+                } else {
+                    // Both operands are integers
+                    let left = left_value.parse::<i32>().unwrap();
+                    let right = right_value.parse::<i32>().unwrap();
+                    (left + right).to_string()
+                };
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
             }
             "-" => {
-                let left = quadruple[1].memory;
-                let right = quadruple[2].memory;
-                let assign_location = quadruple[3].memory;
-                match get_type(left).to_string().as_str() {
-                    "int" => {
-                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vint(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vint(left_val - right_val));
-                            }
-                        }
-                    }
-                    "float" => {
-                        if let Value::Vfloat(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vfloat(left_val - right_val));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                instruction_pointer += 1;
+                let (left_value, left_type) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, right_type) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                let result = if left_type == "float" || right_type == "float" {
+                    // Coerce to float if either operand is a float
+                    let left = left_value.parse::<f32>().unwrap();
+                    let right = right_value.parse::<f32>().unwrap();
+                    (left - right).to_string()
+                } else {
+                    // Both operands are integers
+                    let left = left_value.parse::<i32>().unwrap();
+                    let right = right_value.parse::<i32>().unwrap();
+                    (left - right).to_string()
+                };
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
             }
             "*" => {
-                let left = quadruple[1].memory;
-                let right = quadruple[2].memory;
-                let assign_location = quadruple[3].memory;
-                match get_type(left).to_string().as_str() {
-                    "int" => {
-                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vint(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vint(left_val * right_val));
-                            }
-                        }
-                    }
-                    "float" => {
-                        if let Value::Vfloat(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vfloat(left_val * right_val));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                instruction_pointer += 1;
+                let (left_value, left_type) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, right_type) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                let result = if left_type == "float" || right_type == "float" {
+                    // Coerce to float if either operand is a float
+                    let left = left_value.parse::<f32>().unwrap();
+                    let right = right_value.parse::<f32>().unwrap();
+                    (left * right).to_string()
+                } else {
+                    // Both operands are integers
+                    let left = left_value.parse::<i32>().unwrap();
+                    let right = right_value.parse::<i32>().unwrap();
+                    (left * right).to_string()
+                };
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
             }
             "/" => {
-                let left = quadruple[1].memory;
-                let right = quadruple[2].memory;
-                let assign_location = quadruple[3].memory;
-                println!("{} {} {}", left, right, assign_location);
-                match get_type(assign_location).to_string().as_str() {
-                    "int" => {
-                        if let Value::Vint(left_val) = virtual_memory.get(&left).unwrap() {
-                            if let Value::Vint(right_val) = virtual_memory.get(&left).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vint(left_val / right_val));
-                            }
-                        }
-                    }
-                    "float" => {
-                        if let Value::Vfloat(left_val) = virtual_memory.get(&right).unwrap() {
-                            if let Value::Vfloat(right_val) = virtual_memory.get(&right).unwrap() {
-                                virtual_memory.insert(assign_location, Value::Vfloat(left_val / right_val));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                instruction_pointer += 1;
+                let (left_value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, _) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                // Both operands are integers
+                let left = left_value.parse::<i32>().unwrap();
+                let right = right_value.parse::<i32>().unwrap();
+                let result = (left / right).to_string();
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
             }
-            _ => {instruction_pointer += 1;}
+            ">" => {
+                let (left_value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, _) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                // Both operands are integers
+                let left = left_value.parse::<i32>().unwrap();
+                let right = right_value.parse::<i32>().unwrap();
+                let result = (bool_to_int(left > right)).to_string();
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "<" => {
+                let (left_value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, _) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                // Both operands are integers
+                let left = left_value.parse::<i32>().unwrap();
+                let right = right_value.parse::<i32>().unwrap();
+                let result = (bool_to_int(left < right)).to_string();
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "print" => {
+                let (value, _) = get_value(&virtual_memory, quadruple[3].memory as usize).unwrap();
+                println!("{}", value);
+                intruction_pointer += 1;
+            }
+            _ => {intruction_pointer += 1;}
         }
-        println!("+++++++++++++++++++++++++++++++++++++++++++++");
-        println!("{:#?}", virtual_memory);
-        println!("+++++++++++++++++++++++++++++++++++++++++++++");
     }
-    
-    println!("\n#### END OF OUTPUT ####");
+    println!("\n################### OUTPUT WINDOW ###################\n");
+
+    println!("{:#?}", virtual_memory);
 }
 
 fn main() {
