@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, VecDeque}, fs, hash::Hash, iter::Inspect};
+use std::{collections::{HashMap, VecDeque}, fs, hash::Hash};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -9,7 +9,7 @@ mod classes;
 mod virtual_machine;
 use classes::{
     quadruple_unit::QuadrupleUnit,
-    var_info::VarInfo, virtual_memory,
+    var_info::VarInfo,
 };
 
 #[derive(Parser)]
@@ -1832,7 +1832,7 @@ fn virtual_machine(dusty_context: &DustyContext) {
                 let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
                 if value == "0" {
                     intruction_pointer = quadruple[3].memory as usize;
-                    // println!("GOTOF: {}", intruction_pointer);
+                    println!("GOTOF: {:#?}, Som {}", dusty_context.quadruples[intruction_pointer], intruction_pointer);
                 } else {
                     intruction_pointer += 1;
                 }
@@ -1850,12 +1850,15 @@ fn virtual_machine(dusty_context: &DustyContext) {
                 let current_pointer = intruction_pointer + 1;
                 virtual_memory.jump_stack.push(current_pointer);
                 intruction_pointer = quadruple[3].memory as usize - 1;
-                // println!("GOSUB: {}", quadruple[3].memory - 1);
+                println!("GOSUB: {}", quadruple[3].memory - 1);
             }
             "endfunc" => {
                 // println!("ENDFUNC");
                 let return_pointer = virtual_memory.jump_stack.pop().unwrap();
                 intruction_pointer = return_pointer;
+            }
+            "end" => {
+                break;
             }
             "=" => {
                 // println!("{:#?}", quadruple);
@@ -1971,7 +1974,7 @@ fn virtual_machine(dusty_context: &DustyContext) {
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app7.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app8.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();

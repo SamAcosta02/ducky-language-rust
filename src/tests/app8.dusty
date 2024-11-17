@@ -1,0 +1,23 @@
+program real_test2;
+
+vars example:int;
+
+void print_some(ex: int) {
+  while (ex > 0) do {
+    print!(ex);
+    ex = ex - 1;
+  };
+  print!("Hello");
+};
+
+begin
+{
+  if (10 < 1) {
+    print!("whoopsie!");
+  } else {
+    print!("obviously!");
+  };
+  example = 5;
+  print_some(example);
+}
+end
