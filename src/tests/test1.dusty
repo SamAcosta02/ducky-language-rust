@@ -1,7 +1,7 @@
 program real_test;
 
 vars
-  length, width, area, som:int;
+  length, width, area:int;
 
 void calculate_area(length: int, width: int) {
   area = length * width;
