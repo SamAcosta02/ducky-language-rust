@@ -1,4 +1,2 @@
-// Function needs to be declared before calling
-// Function parameter check (Parameter Table)
-// Verify that the result for the expression within the if and while are ints and not floats
-// Memory Quads
+// Creating vm memmory creation
+// VM executing quads

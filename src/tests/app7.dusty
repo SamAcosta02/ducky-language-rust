@@ -1,10 +1,20 @@
 program real_test;
 
-vars example:int;
+vars
+  length, width, area, som:int;
+
+void calculate_area(length: int, width: int) {
+  area = length * width;
+  if (area > 30) {
+    print!("Big Area!");
+  };
+};
 
 begin
 {
-  example = 10;
-  print!(example);
+  length = 5;
+  width = 10;
+  calculate_area(length, width);
+  print!(area);
 }
 end

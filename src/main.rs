@@ -1,56 +1,27 @@
-use std::{collections::{HashMap, VecDeque}, fs};
+use std::{collections::{HashMap, VecDeque}, fs, hash::Hash};
 
 use pest::Parser;
 use pest_derive::Parser;
+
+use colored::*;
+
+mod classes;
+mod virtual_machine;
+use classes::{
+    quadruple_unit::QuadrupleUnit,
+    var_info::VarInfo,
+};
 
 #[derive(Parser)]
 #[grammar = "dusty.pest"]
 pub struct DustyParser;
 
 #[derive(Debug)]
-struct QuadrupleUnit {
-    name: String,
-    memory: u32,
-}
-
-impl QuadrupleUnit {
-    fn new(name: String, memory: u32) -> Self {
-        QuadrupleUnit {
-            name,
-            memory,
-        }
-    }
-}
-
-#[derive(Debug)]
-#[derive(Clone)]
-struct VarInfo {
-    name: String,
-    var_type: String,
-    location: u32,
-    // kind: String
-}
-
-impl VarInfo {
-    fn new(name:String, var_type: String, location: u32) -> Self {
-        VarInfo {
-            name,
-            var_type,
-            location,
-            // kind
-        }
-    }
-    // fn to_string(&self) -> String {
-    //     self.var_type.clone()
-    // }
-}
-
-
-#[derive(Debug)]
 struct Resources {
     int_count: u32,
     float_count: u32,
-    temporal_count: u32,
+    temp_i_count: u32,
+    temp_f_count: u32,
 }
 
 impl Resources {
@@ -58,7 +29,8 @@ impl Resources {
         Resources {
             int_count: 0,
             float_count: 0,
-            temporal_count: 0,
+            temp_i_count: 0,
+            temp_f_count: 0
         }
     }
 }
@@ -69,6 +41,7 @@ struct FunctionInfo {
     location: u32,
     resources: Resources,
     vars: HashMap<String, VarInfo>,
+    params: Vec<String>
 }
 
 impl FunctionInfo {
@@ -78,6 +51,7 @@ impl FunctionInfo {
             location,
             resources: Resources::new(),
             vars: HashMap::new(),
+            params: Vec::new()
         }
     }
 
@@ -90,12 +64,12 @@ impl FunctionInfo {
     }
 
     fn get_counter(&self, var_type: &str, kind: &str) -> u32 {
-        println!("Getting counter for {} {}", var_type, kind);
+        // println!("Getting counter for {} {}", var_type, kind);
         match (var_type, kind) {
             ("int", "regular") => self.resources.int_count,
             ("float", "regular") => self.resources.float_count,
-            ("int", "temporal") => self.resources.temporal_count,
-            ("float", "temporal") => self.resources.temporal_count,
+            ("int", "temporal") => self.resources.temp_i_count,
+            ("float", "temporal") => self.resources.temp_f_count,
             _ => 9999
         }
     }
@@ -104,14 +78,18 @@ impl FunctionInfo {
         match (var_type, kind) {
             ("int", "regular") => self.resources.int_count += 1,
             ("float", "regular") => self.resources.float_count += 1,
-            ("int", "temporal") => self.resources.temporal_count += 1,
-            ("float", "temporal") => self.resources.temporal_count += 1,
+            ("int", "temporal") => self.resources.temp_i_count += 1,
+            ("float", "temporal") => self.resources.temp_f_count += 1,
             _ => {}
         }
     }
 
     fn insert(&mut self, key: String, var_type: String, memory: u32) {
        self.vars.insert(key.clone(), VarInfo::new(key, var_type, memory));
+    }
+
+    fn add_param(&mut self, param: String) {
+        self.params.push(param);
     }
 }
 
@@ -219,7 +197,7 @@ struct QuadData {
     param_counter: usize,
     temp_counter: usize,
     semantic_cube: SemanticCube,
-    memmory_config: [[u32; 2]; 9],
+    memmory_config: [[u32; 2]; 11],
     operator_config: HashMap<String, usize>
 }
 
@@ -230,22 +208,24 @@ impl QuadData {
             operand_stack: Vec::new(),
             jump_stack: Vec::new(),
             quad_counter: 1,
-            param_counter: 1,
+            param_counter: 0,
             temp_counter: 1,
             semantic_cube: SemanticCube::new(),
             memmory_config: [
                 // ---- Global ----
                 [1000, 2999], // 0. Ints
                 [3000, 4999], // 1. Floats
-                [5000, 6999], // 2. Temporal
+                [5000, 6999], // 2. Temporal Intss
+                [7000, 8999], // 3. Temporal Floats
                 // ---- Local ----
-                [11000, 12999], // 3. Ints
-                [13000, 14999], // 4. Floats
-                [15000, 16999], // 5. Temporal
+                [11000, 12999], // 4. Ints
+                [13000, 14999], // 5. Floats
+                [15000, 16999], // 6. Temporal Ints
+                [17000, 18999], // 7. Temporal Floats
                 // ---- Constants ----
-                [21000, 22999], // 6. Ints
-                [23000, 24999], // 7. Floats
-                [25000, 26999], // 8. Strings
+                [21000, 22999], // 8. Ints
+                [23000, 24999], // 9. Floats
+                [25000, 26999], // 10. Strings
             ],
             operator_config: {
                 let mut map = HashMap::new();
@@ -276,14 +256,14 @@ impl QuadData {
             ("int", "global", "regular") => self.memmory_config[0][0],
             ("float", "global", "regular") => self.memmory_config[1][0],
             ("int", "global", "temporal") => self.memmory_config[2][0],
-            ("float", "global", "temporal") => self.memmory_config[2][0],
-            ("int", _, "regular") => self.memmory_config[3][0],
-            ("float", _, "regular") => self.memmory_config[4][0],
-            ("int", _, "temporal") => self.memmory_config[5][0],
-            ("float", _, "temporal") => self.memmory_config[5][0],
-            ("int", _, "constant") => self.memmory_config[6][0],
-            ("float", _, "constant") => self.memmory_config[7][0],
-            ("string", _, "constant") => self.memmory_config[8][0],
+            ("float", "global", "temporal") => self.memmory_config[3][0],
+            ("int", _, "regular") => self.memmory_config[4][0],
+            ("float", _, "regular") => self.memmory_config[5][0],
+            ("int", _, "temporal") => self.memmory_config[6][0],
+            ("float", _, "temporal") => self.memmory_config[7][0],
+            ("int", _, "constant") => self.memmory_config[8][0],
+            ("float", _, "constant") => self.memmory_config[9][0],
+            ("string", _, "constant") => self.memmory_config[10][0],
             _ => 999999
         }
     }
@@ -292,6 +272,7 @@ impl QuadData {
 #[derive(Debug)]
 struct DustyContext {
     func_dir: HashMap<String, FunctionInfo>, // Function-variable scope directory
+    const_dir: HashMap<String, VarInfo>, // Constant directory
     parent_rules: Vec<Rule>,
     current_type: String,
     current_func: String,
@@ -299,13 +280,14 @@ struct DustyContext {
     id_stack: Vec<String>,
     quad_data: QuadData,
     quadruples: VecDeque<[QuadrupleUnit; 4]>,
-    constants: u32
+    constants: [u32; 3]
 }
 
 impl DustyContext {
     fn new() -> Self {
         DustyContext {
             func_dir: HashMap::new(),
+            const_dir: HashMap::new(),
             id_stack: Vec::new(),
             parent_rules: vec![Rule::program],
             current_func: String::new(),
@@ -313,7 +295,7 @@ impl DustyContext {
             current_type: String::new(),
             quad_data: QuadData::new(),
             quadruples: VecDeque::new(),
-            constants: 0
+            constants: [0,0,0]
         }
     }
 
@@ -341,13 +323,6 @@ impl DustyContext {
     fn top_is_equals(&self) -> bool {
         self.quad_data.operator_stack.last() == Some(&String::from("="))
     }
-
-    // fn insert_variable(&mut self, id: String, var_type:String, kind: &str) {
-    //     let base = self.quad_data.get_memory_segment(&var_type, &self.current_func, kind);
-    //     let counter = self.func_dir.get_mut(&self.current_func).unwrap().get_counter(&var_type, kind);
-    //     self.func_dir.get_mut(&self.current_func).unwrap().insert(id.to_string(), var_type.to_string(), base+counter);
-    //     self.constants += 1;
-    // }
 
     fn generate_full_quad(&mut self) {
         // Get Operands and Operator
@@ -460,6 +435,11 @@ impl DustyContext {
     }
 
     fn generate_gotof_quad(&mut self) {
+        // Check if top of operand stack is a int
+        if self.quad_data.operand_stack.last().unwrap().var_type != "int" {
+            panic!("ERROR: Expected int but got {}", self.quad_data.operand_stack.last().unwrap().var_type);
+        }
+
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "gotof".to_string(),
@@ -571,8 +551,20 @@ impl DustyContext {
         self.quad_data.quad_counter += 1;
     }
 
-    fn generate_param_quad(&mut self) {
+    fn generate_param_quad(&mut self) { 
         let param = self.quad_data.operand_stack.last().unwrap();
+
+        // Check for parameter overflow
+        if self.quad_data.param_counter > self.func_dir.get(&self.current_call).unwrap().params.len() {
+            panic!("ERROR: Too many parameters for function \"{}\"", self.current_call);
+        }
+
+        // Check current parameter type
+        let var_type = &self.func_dir.get(&self.current_call).unwrap().params[self.quad_data.param_counter];
+        if param.var_type != *var_type {
+            panic!("ERROR: Type mismatch. Expected {} but got {}", var_type, param.var_type);
+        }
+
         self.quadruples.push_back([
             QuadrupleUnit::new(
                 "param".to_string(),
@@ -690,13 +682,13 @@ impl DustyContext {
         }
     }
 
-    fn debug_quad_gen(&self) {
-        println!("  Operator stack: {:?}", self.quad_data.operator_stack);
-        println!("  Operand stack: {:?}", self.quad_data.operand_stack);
-        println!("  Jump stack: {:?}", self.quad_data.jump_stack);
-        println!("  temp counter: {}, quad_counter: {}", self.quad_data.temp_counter, self.quad_data.quad_counter);
-        println!("  param counter: {}", self.quad_data.param_counter);
-    }
+    // fn debug_quad_gen(&self) {
+    //     println!("  Operator stack: {:?}", self.quad_data.operator_stack);
+    //     println!("  Operand stack: {:?}", self.quad_data.operand_stack);
+    //     println!("  Jump stack: {:?}", self.quad_data.jump_stack);
+    //     println!("  temp counter: {}, quad_counter: {}", self.quad_data.temp_counter, self.quad_data.quad_counter);
+    //     println!("  param counter: {}", self.quad_data.param_counter);
+    // }
 }
 
 fn process_pair(
@@ -704,17 +696,17 @@ fn process_pair(
     stage: Stage,
     dusty_context: &mut DustyContext
 ) {
-    println!("Processing rule: {:#?} in stage {:#?}, parent rule: {:#?}, currrent func: {:#?}, line: {:#?}, col: {:#?}",
-        pair.as_rule(), stage, dusty_context.parent_rules.last().unwrap(), dusty_context.current_func,
-        pair.as_span().start_pos().line_col().0,
-        pair.as_span().start_pos().line_col().1
-    );
+    // println!("Processing rule: {:#?} in stage {:#?}, parent rule: {:#?}, currrent func: {:#?}, line: {:#?}, col: {:#?}",
+    //     pair.as_rule(), stage, dusty_context.parent_rules.last().unwrap(), dusty_context.current_func,
+    //     pair.as_span().start_pos().line_col().0,
+    //     pair.as_span().start_pos().line_col().1
+    // );
 
     match (pair.as_rule(), &stage) {
         // Process beginKeyword ----------------------------
         (Rule::beginKeyword, Stage::Before) => {
-            println!("  token BEGIN found:");
-            println!("  Filling initial GOTO quad");
+            // println!("  token BEGIN found:");
+            // println!("  Filling initial GOTO quad");
             dusty_context.fill_jump();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -722,27 +714,27 @@ fn process_pair(
 
         // Process ID --------------------------------------
         (Rule::id, Stage::Before) => {
-            println!("  Token ID found: {:#?}", pair.as_str());
+            // println!("  Token ID found: {:#?}", pair.as_str());
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::id, Stage::During) => {
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::program => {
-                    println!("  Adding global scope to function directory"); // #1 Add global scope during program name
+                    // println!("  Adding global scope to function directory"); // #1 Add global scope during program name
                     dusty_context.func_dir.insert("global".to_string(), FunctionInfo::new(0));
                     dusty_context.current_func = "global".to_string();
                 }
                 Rule::vars => {
-                    println!("  Adding variable stack to add to directory after knowing its type"); // #2 Add variable to stack at ID in VARS
+                    // println!("  Adding variable stack to add to directory after knowing its type"); // #2 Add variable to stack at ID in VARS
                     dusty_context.id_stack.push(pair.as_str().to_string());                  
                 }
                 Rule::funcs => {
-                    println!("  Adding function scope to function directory"); // #3 Add function scope during function name
+                    // println!("  Adding function scope to function directory"); // #3 Add function scope during function name
                     dusty_context.func_dir.insert(pair.as_str().to_string(), FunctionInfo::new(0));
                     dusty_context.current_func = pair.as_str().to_string();
                 }
                 Rule::id_type_list => {
-                    println!("  Adding ID to stack to add to directory after knowing its type"); // #4 Add ID to stack at ID_LIST
+                    // println!("  Adding ID to stack to add to directory after knowing its type"); // #4 Add ID to stack at ID_LIST
                     dusty_context.id_stack.push(pair.as_str().to_string());
                 }
                 Rule::assign => {
@@ -752,13 +744,24 @@ fn process_pair(
 
                         dusty_context.quad_data.operand_stack.push(var.clone());
 
-                        println!("{:#?}", dusty_context.quad_data.operand_stack);
+                        // println!("{:#?}", dusty_context.quad_data.operand_stack);
+                    } else if dusty_context.id_in_global_scope(pair.as_str()) {
+                        let var = dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap();
+
+                        dusty_context.quad_data.operand_stack.push(var.clone());
+
+                        // println!("{:#?}", dusty_context.quad_data.operand_stack);
                     } else {
                         panic!("ERROR: ID \"{}\" not found in current context", pair.as_str());
                     }
                 }
                 Rule::func_call => {
-                    println!("  Generate GOSUB quad to call function"); // #8 Generate GOSUB quad to call function
+                    // println!("  Generate GOSUB quad to call function"); // #8 Generate GOSUB quad to call function
+                    if !dusty_context.func_dir.contains_key(pair.as_str()) {
+                        let function_name = pair.as_str();
+                        let error_message = format!("ERROR: Function \"{}\" was not declared", function_name.red());
+                        panic!("{:}", error_message.red());
+                    }
                     dusty_context.current_call = pair.as_str().to_string();
                     dusty_context.generate_era_quad(pair.as_str());
                 }
@@ -771,7 +774,7 @@ fn process_pair(
                             pair.as_span().start_pos().line_col().1
                         );
                     } else {
-                        println!("  ID \"{}\" was found in current context", pair.as_str());
+                        // println!("  ID \"{}\" was found in current context", pair.as_str());
                     }
                 }
             }
@@ -781,19 +784,19 @@ fn process_pair(
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::value => {
                     if dusty_context.contains_id(pair.as_str()) {
-                        println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
+                        // println!("  (#1) Adding ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
                         let var = dusty_context.func_dir.get(&dusty_context.current_func).unwrap().get(pair.as_str()).unwrap().clone();
                         dusty_context.quad_data.operand_stack.push(var);
                     } else {
-                        println!("  (#1) Adding global ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
+                        // println!("  (#1) Adding global ID and type to operand stack in factor"); // #1.1 Add ID and type to operand stack in FACTOR
                         let var = dusty_context.func_dir.get("global").unwrap().get(pair.as_str()).unwrap().clone();
                         dusty_context.quad_data.operand_stack.push(var);
                     }
-                    println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+                    // println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
                 }
                 _ => {}
             }
-            println!("\n");
+            // println!("\n");
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process ID --------------------------------------
@@ -801,7 +804,7 @@ fn process_pair(
 
         // Process Vars ------------------------------------
         (Rule::vars, Stage::Before) => {
-            println!("  Sintactic rule VARS found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule VARS found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::vars);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -827,7 +830,7 @@ fn process_pair(
 
         // Process typeVar ---------------------------------
         (Rule::typeVar, Stage::Before) => {
-            println!("  Sintactic rule TYPEVAR found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule TYPEVAR found: {:#?}", pair.as_str());
             dusty_context.current_type = pair.as_str().to_string();
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -843,7 +846,7 @@ fn process_pair(
                     let base = dusty_context.quad_data.get_memory_segment(&var_type, &dusty_context.current_func, "regular");
                     let counter = dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().get_counter(&var_type, "regular");
                     
-                    println!("Adding id {} to {} as {} in {}", id, dusty_context.current_func, dusty_context.current_type, base+counter);
+                    // println!("Adding id {} to {} as {} in {}", id, dusty_context.current_func, dusty_context.current_type, base+counter);
                     
                     // Insert variable to function directory
                     dusty_context.func_dir
@@ -862,7 +865,13 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::typeVar, Stage::After) => {
-            println!("\n");
+            // println!("\n");
+            match dusty_context.parent_rules.last().unwrap() {
+                Rule::id_type_list => {
+                   dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().add_param(dusty_context.current_type.clone());
+                }
+                _ => {}
+            }
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process typeVar ---------------------------------
@@ -870,7 +879,7 @@ fn process_pair(
 
         // Process id_list ---------------------------------
         (Rule::id_list, Stage::Before) => {
-            println!("  Sintactic rule ID_LIST found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule ID_LIST found: {:#?}", pair.as_str());
             let inner_pairs = pair.clone().into_inner();
             for inner_pair in inner_pairs {
                 process_pair(
@@ -886,7 +895,7 @@ fn process_pair(
 
         // Process Functions -------------------------------
         (Rule::funcs, Stage::Before) => {
-            println!("  Sintactic rule FUNCTION found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule FUNCTION found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::funcs);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -902,7 +911,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::funcs, Stage::After) => {
-            println!("\n");
+            // println!("\n");
             dusty_context.parent_rules.pop();
             dusty_context.current_func = "global".to_string();
             process_pair(pair, Stage::Finished, dusty_context);
@@ -912,7 +921,7 @@ fn process_pair(
 
         // Process parameters ------------------------------
         (Rule::parameters, Stage::Before) => {
-            println!("  Sintactic rule PARAMETERS found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule PARAMETERS found: {:#?}", pair.as_str());
             let inner_pairs = pair.clone().into_inner();
             for inner_pair in inner_pairs {
                 process_pair(
@@ -928,7 +937,7 @@ fn process_pair(
 
         // Process func_body -------------------------------
         (Rule::func_body, Stage::Before) => {
-            println!("  Sintactic rule FUNC_BODY found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule FUNC_BODY found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::func_body);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -944,7 +953,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::func_body, Stage::After) => {
-            println!("\n");
+            // println!("\n");
             dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -953,7 +962,7 @@ fn process_pair(
 
         // Process func_call -------------------------------
         (Rule::func_call, Stage::Before) => {
-            println!("  Sintactic rule FUNC_CALL found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule FUNC_CALL found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::func_call);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -969,9 +978,9 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::func_call, Stage::After) => {
-            println!("\n");
+            // println!("\n");
             dusty_context.parent_rules.pop();
-            dusty_context.quad_data.param_counter = 1;
+            dusty_context.quad_data.param_counter = 0;
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process func_call -------------------------------
@@ -979,7 +988,7 @@ fn process_pair(
 
         // Process id_type_list ----------------------------
         (Rule::id_type_list, Stage::Before) => {
-            println!("  Sintactic rule ID_TYPE_LIST found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule ID_TYPE_LIST found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::id_type_list);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -995,7 +1004,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::id_type_list, Stage::After) => {
-            println!("\n");
+            // println!("\n");
             dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1004,7 +1013,7 @@ fn process_pair(
 
         // Process body ------------------------------------
         (Rule::body, Stage::Before) => {
-            println!("  Sintactic rule BODY found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule BODY found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::body);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1020,7 +1029,7 @@ fn process_pair(
             process_pair(pair, Stage::After, dusty_context);
         }
         (Rule::body, Stage::After) => {
-            println!("\n");
+            // println!("\n");
             dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1029,8 +1038,8 @@ fn process_pair(
 
         // Process statement -------------------------------
         (Rule::statement, Stage::Before) => {
-            println!("\n");
-            println!("  Sintactic rule STATEMENT found: {:#?}", pair.as_str());
+            // println!("\n");
+            // println!("  Sintactic rule STATEMENT found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::statement);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1054,7 +1063,7 @@ fn process_pair(
 
         // Process while -----------------------------------
         (Rule::while_loop, Stage::Before) => {
-            println!("  Sintactic rule WHILE found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule WHILE found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::while_loop);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1078,8 +1087,8 @@ fn process_pair(
 
         // Process doKeyword -------------------------------
         (Rule::doKeyword, Stage::Before) => {
-            println!("  token DO found:");
-            println!("  (#?) Generate GOTO quad to start of while loop");
+            // println!("  token DO found:");
+            // println!("  (#?) Generate GOTO quad to start of while loop");
             dusty_context.generate_gotof_quad();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1088,7 +1097,7 @@ fn process_pair(
 
         // Process if --------------------------------------
         (Rule::condition, Stage::Before) => {
-            println!("  Sintactic rule CONDITION found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule CONDITION found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::condition);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1112,7 +1121,7 @@ fn process_pair(
 
         // Process elseKeyword -----------------------------
         (Rule::elseKeyword, Stage::Before) => {
-            println!("  token rule ELSE found: {:#?}", pair.as_str());
+            // println!("  token rule ELSE found: {:#?}", pair.as_str());
             dusty_context.fill_jump();
             dusty_context.quad_data.jump_stack.push(dusty_context.quad_data.quad_counter);
             dusty_context.generate_goto_quad();
@@ -1123,7 +1132,7 @@ fn process_pair(
 
         // Process print -----------------------------------
         (Rule::print, Stage::Before) => {
-            println!("  Sintactic rule PRINT found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule PRINT found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::print);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1147,7 +1156,7 @@ fn process_pair(
 
         // Process print_element ---------------------------
         (Rule::print_element, Stage::Before) => {
-            println!("  Sintactic rule PRINT_ELEMENT found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule PRINT_ELEMENT found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::print_element);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1172,7 +1181,7 @@ fn process_pair(
 
         // Process assignment ------------------------------
         (Rule::assign, Stage::Before) => {
-            println!("  Sintactic rule ASSIGNMENT found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule ASSIGNMENT found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::assign);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1190,10 +1199,10 @@ fn process_pair(
         (Rule::assign, Stage::After) => {
             dusty_context.parent_rules.pop();
             if dusty_context.top_is_equals() {
-                println!("  (#7) Execute #4 with =");
+                // println!("  (#7) Execute #4 with =");
                 dusty_context.generate_assign_quad();
             }
-            dusty_context.debug_quad_gen();
+            // dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process assignment ------------------------------
@@ -1201,7 +1210,7 @@ fn process_pair(
 
         // Process expression ------------------------------
         (Rule::expression, Stage::Before) => {
-            println!("  Sintactic rule EXPRESSION found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule EXPRESSION found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::expression);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1219,20 +1228,20 @@ fn process_pair(
         (Rule::expression, Stage::After) => {
             dusty_context.parent_rules.pop();
             if dusty_context.top_is_logical_operator() {
-                println!("  (#6) Execute #4 with >, <, == or !=");
+                // println!("  (#6) Execute #4 with >, <, == or !=");
                 dusty_context.generate_full_quad();
             }
 
             // Parameters for function call
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::func_call => {
-                    println!("  (#?) Generate PARAM quad for function call");
+                    // println!("  (#?) Generate PARAM quad for function call");
                     dusty_context.generate_param_quad();
                 }
                 _ => {}
             }
 
-            dusty_context.debug_quad_gen();
+            // dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process expression ------------------------------
@@ -1240,7 +1249,7 @@ fn process_pair(
 
         // Process exp -------------------------------------
         (Rule::exp, Stage::Before) => {
-            println!("  Sintactic rule EXP found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule EXP found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::exp);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1258,10 +1267,10 @@ fn process_pair(
         (Rule::exp, Stage::After) => {
             dusty_context.parent_rules.pop();
             if dusty_context.top_is_addition_or_subtraction() {
-                println!("  (#4) Execute #4 with + or -");
+                // println!("  (#4) Execute #4 with + or -");
                 dusty_context.generate_full_quad();
             }
-            dusty_context.debug_quad_gen();
+            // dusty_context.debug_quad_gen();
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process exp -------------------------------------
@@ -1269,7 +1278,7 @@ fn process_pair(
 
         // Process term ------------------------------------
         (Rule::term, Stage::Before) => {
-            println!("  Sintactic rule TERM found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule TERM found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::term);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1286,10 +1295,10 @@ fn process_pair(
         }
         (Rule::term, Stage::After) => {
             if dusty_context.top_is_multiplication_or_division() {
-                println!("  (#5) Execute #4 with * or /");
+                // println!("  (#5) Execute #4 with * or /");
                 dusty_context.generate_full_quad();
             }
-            dusty_context.debug_quad_gen();
+            // dusty_context.debug_quad_gen();
             dusty_context.parent_rules.pop();
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1298,7 +1307,7 @@ fn process_pair(
 
         // Process factor ----------------------------------
         (Rule::factor, Stage::Before) => {
-            println!("  Sintactic rule FACTOR found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule FACTOR found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::factor);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1322,7 +1331,7 @@ fn process_pair(
 
         // Process value -----------------------------------
         (Rule::value, Stage::Before) => {
-            println!("  Sintactic rule VALUE found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule VALUE found: {:#?}", pair.as_str());
             dusty_context.parent_rules.push(Rule::value);
             process_pair(pair, Stage::During, dusty_context);
         }
@@ -1346,15 +1355,15 @@ fn process_pair(
 
         // Process operator --------------------------------
         (Rule::operator, Stage::Before) => {
-            println!("  token OPERATOR found: {:#?}", pair.as_str());
+            // println!("  token OPERATOR found: {:#?}", pair.as_str());
             if dusty_context.top_is_multiplication_or_division() {
-                println!("  (#10) (Encountered * or / but there is at least 1 that needs to be executed before... Execute #4 with * or /");
+                // println!("  (#10) (Encountered * or / but there is at least 1 that needs to be executed before... Execute #4 with * or /");
                 dusty_context.generate_full_quad();
             }
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::operator, Stage::During) => {
-            println!("  (#2) Push operator to operator stack");
+            // println!("  (#2) Push operator to operator stack");
             dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1363,15 +1372,15 @@ fn process_pair(
 
         // Process sign ------------------------------------
         (Rule::sign, Stage::Before) => {
-            println!("  token SIGN found: {:#?}", pair.as_str());
+            // println!("  token SIGN found: {:#?}", pair.as_str());
             if dusty_context.top_is_addition_or_subtraction() {
-                println!("  (#11) (Encountered + or - but there is at least 1 that needs to be executed before... Execute #4 with + or -");
+                // println!("  (#11) (Encountered + or - but there is at least 1 that needs to be executed before... Execute #4 with + or -");
                 dusty_context.generate_full_quad();
             }
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::sign, Stage::During) => {
-            println!("  (#3) Push sign to operator stack");
+            // println!("  (#3) Push sign to operator stack");
             dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1380,8 +1389,8 @@ fn process_pair(
 
         // Process logical_operator -------------------------
         (Rule::comparator, Stage::Before) => {
-            println!("  token COMPARATOR found: {:#?}", pair.as_str());
-            println!("  (#4) Push logical operator to operator stack");
+            // println!("  token COMPARATOR found: {:#?}", pair.as_str());
+            // println!("  (#4) Push logical operator to operator stack");
             dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1390,8 +1399,8 @@ fn process_pair(
         
         // Process equals ----------------------------------
         (Rule::equals, Stage::Before) => {
-            println!("  token EQUALS found: {:#?}", pair.as_str());
-            println!("  (#5) Push equals to operator stack");
+            // println!("  token EQUALS found: {:#?}", pair.as_str());
+            // println!("  (#5) Push equals to operator stack");
             dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
             process_pair(pair, Stage::Finished, dusty_context);
         }
@@ -1400,17 +1409,17 @@ fn process_pair(
 
         // Process open_parenthesis -------------------------
         (Rule::openP, Stage::Before) => {
-            println!("  token OPEN_PARENTHESIS found: {:#?}", pair.as_str());
+            // println!("  token OPEN_PARENTHESIS found: {:#?}", pair.as_str());
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::openP, Stage::During) => {
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::factor => {
-                    println!("  (#6) Push open parenthesis to operator stack");
+                    // println!("  (#6) Push open parenthesis to operator stack");
                     dusty_context.quad_data.operator_stack.push(pair.as_str().to_string());
                 }
                 Rule::while_loop => {
-                    println!("  (#?) Push to jump stack");
+                    // println!("  (#?) Push to jump stack");
                     dusty_context.quad_data.jump_stack.push(dusty_context.quad_data.quad_counter);
                 }
                 _ => {}
@@ -1422,26 +1431,37 @@ fn process_pair(
 
         // Process close_parenthesis ------------------------
         (Rule::closeP, Stage::Before) => {
-            println!("  token CLOSE_PARENTHESIS found: {:#?}", pair.as_str());
+            // println!("  token CLOSE_PARENTHESIS found: {:#?}", pair.as_str());
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::closeP, Stage::During) => {
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::factor => {
-                    println!("  (#9) pop stack");
+                    // println!("  (#9) pop stack");
                     dusty_context.quad_data.operator_stack.pop();
                     println!("  {:#?}", dusty_context.quad_data.operator_stack);
                 }
                 Rule::condition => {
-                    println!("  (#12) Generate incomplete GOTOF quad and push to jump stack");
+                    // println!("  (#12) Generate incomplete GOTOF quad and push to jump stack");
                     dusty_context.generate_gotof_quad();
                 }
                 Rule::func_call => {
-                    println!("  (#?) Generate GOSUB quad to call function");
+                    // println!("  (#?) Generate GOSUB quad to call function");
+                    // Check for correct number of parameters
+                    if dusty_context.quad_data.param_counter != dusty_context.func_dir.get(&dusty_context.current_call).unwrap().params.len() {
+                        let error_message = format!("ERROR: Function \"{}\" was called with {} parameters, expected {}. Line: {}, Col: {}",
+                            dusty_context.current_call.red(),
+                            dusty_context.quad_data.param_counter,
+                            dusty_context.func_dir.get(&dusty_context.current_call).unwrap().params.len(),
+                            pair.as_span().start_pos().line_col().0,
+                            pair.as_span().start_pos().line_col().1
+                        );
+                        panic!("{:}", error_message.red());
+                    } 
                     dusty_context.generate_gosub_quad();
                 }
                 Rule::funcs => {
-                    println!("  (#?) Assign quadruple location to the start of the function");
+                    // println!("  (#?) Assign quadruple location to the start of the function");
                     dusty_context.func_dir.get_mut(&dusty_context.current_func).unwrap().location = dusty_context.quad_data.quad_counter as u32;
                 }
                 _ => {}
@@ -1453,7 +1473,7 @@ fn process_pair(
 
         // Process cte -------------------------------------
         (Rule::cte, Stage::Before) => {
-            println!("  Sintactic rule CTE found: {:#?}", pair.as_str());
+            // println!("  Sintactic rule CTE found: {:#?}", pair.as_str());
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::cte, Stage::During) => {
@@ -1476,16 +1496,22 @@ fn process_pair(
         
         // Process cte_int ---------------------------------
         (Rule::cte_int, Stage::Before) => {
-            println!("  token CTE found: {:#?}", pair.as_str());
-            println!("  (#1) Adding CTE to operand stack in factor");
-            let const_var = VarInfo::new(
-                pair.as_str().to_string(),
-                "int".to_string(),
-                0,
-            );
-            dusty_context.quad_data.operand_stack.push(const_var);
-            println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
-            dusty_context.constants += 1;
+            // println!("  token CTE found: {:#?}", pair.as_str());
+            // println!("  (#1) Adding CTE to operand stack in factor");
+            if dusty_context.const_dir.contains_key(pair.as_str()) {
+                let const_var = dusty_context.const_dir.get(pair.as_str()).unwrap().clone();
+                dusty_context.quad_data.operand_stack.push(const_var);
+            } else {
+                let const_var = VarInfo::new(
+                    pair.as_str().to_string(),
+                    "int".to_string(),
+                    dusty_context.quad_data.get_memory_segment("int", "global", "constant") + dusty_context.constants[0],
+                );
+                dusty_context.const_dir.insert(pair.as_str().to_string(), const_var.clone());
+                dusty_context.quad_data.operand_stack.push(const_var);
+                dusty_context.constants[0] += 1;
+            }
+            // println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process cte_int ---------------------------------
@@ -1493,43 +1519,71 @@ fn process_pair(
 
         // Process cte_float -------------------------------
         (Rule::cte_float, Stage::Before) => {
-            println!("  token CTE_FLOAT found: {:#?}", pair.as_str());
-            println!("  (#1) Adding CTE_FLOAT to operand stack in factor");
-            let const_var = VarInfo::new(
-                pair.as_str().to_string(),
-                "float".to_string(),
-                0,
-            );
-            dusty_context.quad_data.operand_stack.push(const_var);
-            println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
+            // println!("  token CTE_FLOAT found: {:#?}", pair.as_str());
+            // println!("  (#1) Adding CTE_FLOAT to operand stack in factor");
+            if dusty_context.const_dir.contains_key(pair.as_str()) {
+                let const_var = dusty_context.const_dir.get(pair.as_str()).unwrap().clone();
+                dusty_context.quad_data.operand_stack.push(const_var);
+            } else {
+                let const_var = VarInfo::new(
+                    pair.as_str().to_string(),
+                    "float".to_string(),
+                    dusty_context.quad_data.get_memory_segment("float", "global", "constant") + dusty_context.constants[1],
+                );
+                dusty_context.const_dir.insert(pair.as_str().to_string(), const_var.clone());
+                dusty_context.quad_data.operand_stack.push(const_var);
+                dusty_context.constants[1] += 1;
+            }
+            // println!("  Operand stack: {:?}", dusty_context.quad_data.operand_stack);
             process_pair(pair, Stage::Finished, dusty_context);
         }
         // Process cte_float -------------------------------
 
 
+        // Process string ----------------------------------
+        (Rule::string, Stage::Before) => {
+            println!("  token STRING found: {:#?}", pair.as_str());
+            if dusty_context.const_dir.contains_key(pair.as_str()) {
+                let const_var = dusty_context.const_dir.get(pair.as_str()).unwrap().clone();
+                dusty_context.quad_data.operand_stack.push(const_var);
+            } else {
+                let const_var = VarInfo::new(
+                    pair.as_str().to_string().trim_matches('\"').to_string(),
+                    "string".to_string(),
+                    dusty_context.quad_data.get_memory_segment("string", "global", "constant") + dusty_context.constants[2],
+                );
+                dusty_context.const_dir.insert(pair.as_str().to_string().trim_matches('\"').to_string(), const_var.clone());
+                dusty_context.quad_data.operand_stack.push(const_var);
+                dusty_context.constants[2] += 1;
+            }
+            process_pair(pair, Stage::Finished, dusty_context);
+        }
+        // Process string ----------------------------------
+
+
         // Process delimiter -------------------------------
         (Rule::delimiter, Stage::Before) => {
-            println!("  token DELIMITER found: {:#?}", pair.as_str());
+            // println!("  token DELIMITER found: {:#?}", pair.as_str());
             process_pair(pair, Stage::During, dusty_context);
         }
         (Rule::delimiter, Stage::During) => {
             match dusty_context.parent_rules.last().unwrap() {
                 Rule::condition => {
-                    println!("  (#13) Complete GOTOF quad");
+                    // println!("  (#13) Complete GOTOF quad");
                     dusty_context.fill_jump();
                 }
                 Rule::while_loop => {
-                    println!("  (#?) Generate GOTO quad to start of while loop");
+                    // println!("  (#?) Generate GOTO quad to start of while loop");
                     dusty_context.fill_while_start();
                     dusty_context.generate_gotow_quad();
                     dusty_context.fill_while_end();
                 }
                 Rule::funcs => {
-                    println!("  (#?) Generate ENDFUNC to indicate functions end");
+                    // println!("  (#?) Generate ENDFUNC to indicate functions end");
                     dusty_context.generate_endfunc_quad();
                 }
                 Rule::program => {
-                    println!("  (#?) Generate first GOTO quad to start of program");
+                    // println!("  (#?) Generate first GOTO quad to start of program");
                     dusty_context.generate_goto_quad();
                 }
                 _ => {}
@@ -1541,8 +1595,8 @@ fn process_pair(
 
         // Process endKeyword ------------------------------
         (Rule::endKeyword, Stage::Before) => {
-            println!("  token END found");
-            println!("  Generating END quad");
+            // println!("  token END found");
+            // println!("  Generating END quad");
             dusty_context.generate_end_quad();
         }
         // Process endKeyword ------------------------------
@@ -1550,16 +1604,377 @@ fn process_pair(
 
         // Anything else (move on to the next pair)
         _ => {
-            println!("...");
+            // println!("...");
         }
     }
 }
 
+#[derive(Debug)]
+struct GlobalMemory {
+    ints: Vec<i32>,
+    int_temps: Vec<i32>,
+    floats: Vec<f32>,
+    float_temps: Vec<f32>,
+    int_consts: Vec<i32>,
+    float_consts: Vec<f32>,
+    string_const: Vec<String>,
+    memory_stack: Vec<LocalMemory>,
+    jump_stack: Vec<usize>,
+}
 
+impl GlobalMemory {
+    fn new(i_size: usize, it_size: usize, f_size: usize, ft_size: usize, ic_size: usize, fc_size: usize, sc_size: usize) -> GlobalMemory {
+        GlobalMemory {
+            ints: vec![std::i32::MIN; i_size],
+            int_temps: vec![std::i32::MIN; it_size],
+            floats: vec![std::f32::MIN; f_size],
+            float_temps: vec![std::f32::MIN; ft_size],
+            int_consts: vec![std::i32::MIN; ic_size],
+            float_consts: vec![std::f32::MIN; fc_size],
+            string_const: vec!["".to_string(); sc_size],
+            memory_stack: Vec::new(),
+            jump_stack: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct LocalMemory {
+    ints: Vec<i32>,
+    int_temps: Vec<i32>,
+    floats: Vec<f32>,
+    float_temps: Vec<f32>,
+}
+
+impl LocalMemory {
+    fn new(i_size: usize, it_size: usize, f_size: usize, ft_size: usize) -> LocalMemory {
+        LocalMemory {
+            ints: vec![std::i32::MIN; i_size],
+            int_temps: vec![std::i32::MIN; it_size],
+            floats: vec![std::f32::MIN; f_size],
+            float_temps: vec![std::f32::MIN; ft_size],
+        }
+    }
+}
+
+#[derive(Debug)]
+enum MemorySegment {
+    Ints,
+    IntTemps,
+    Floats,
+    FloatTemps,
+
+    IntLocal,
+    FloatLocal,
+    IntLocalTemps,
+    FloatLocalTemps,
+
+    IntConsts,
+    FloatConsts,
+    StringConsts,
+}
+
+fn map_address(address: usize) -> Option<(MemorySegment, usize)> {
+    match address {
+        1000..=2999 => Some((MemorySegment::Ints, address - 1000)),
+        3000..=4999 => Some((MemorySegment::Floats, address - 3000)),
+        5000..=6999 => Some((MemorySegment::IntTemps, address - 5000)),
+        7000..=8999 => Some((MemorySegment::FloatTemps, address - 7000)),
+
+        11000..=12999 => Some((MemorySegment::IntLocal, address - 11000)),
+        13000..=14999 => Some((MemorySegment::FloatLocal, address - 13000)),
+        15000..=16999 => Some((MemorySegment::IntLocalTemps, address - 15000)),
+        17000..=18999 => Some((MemorySegment::FloatLocalTemps, address - 17000)),
+
+        21000..=22999 => Some((MemorySegment::IntConsts, address - 21000)),
+        23000..=24999 => Some((MemorySegment::FloatConsts, address - 23000)),
+        25000..=26999 => Some((MemorySegment::StringConsts, address - 25000)),
+        _ => None, // Address out of bounds
+    }
+}
+
+fn get_value(memory: &GlobalMemory, address: usize) -> Option<(String, &'static str)> {
+    if let Some((segment, offset)) = map_address(address) {
+        match segment {
+            MemorySegment::Ints => Some((memory.ints[offset].to_string(), "int")),
+            MemorySegment::Floats => Some((memory.floats[offset].to_string(), "float")),
+            MemorySegment::IntTemps => Some((memory.int_temps[offset].to_string(), "int")),
+            MemorySegment::FloatTemps => Some((memory.float_temps[offset].to_string(), "float")),
+
+            MemorySegment::IntLocal => Some((memory.memory_stack.last().unwrap().ints[offset].to_string(), "int")),
+            MemorySegment::FloatLocal => Some((memory.memory_stack.last().unwrap().floats[offset].to_string(), "float")),
+            MemorySegment::IntLocalTemps => Some((memory.memory_stack.last().unwrap().int_temps[offset].to_string(), "int")),
+            MemorySegment::FloatLocalTemps => Some((memory.memory_stack.last().unwrap().float_temps[offset].to_string(), "float")),
+
+            MemorySegment::IntConsts => Some((memory.int_consts[offset].to_string(), "int")),
+            MemorySegment::FloatConsts => Some((memory.float_consts[offset].to_string(), "float")),
+            MemorySegment::StringConsts => Some((memory.string_const[offset].to_string(), "string")),
+        }
+    } else {
+        None // Invalid address
+    }
+}
+
+
+fn set_value(memory: &mut GlobalMemory, address: usize, value: String) {
+    if let Some((segment, offset)) = map_address(address) {
+        match segment {
+            MemorySegment::Ints => memory.ints[offset] = value.parse().unwrap(),
+            MemorySegment::Floats => memory.floats[offset] = value.parse().unwrap(),
+            MemorySegment::IntTemps => memory.int_temps[offset] = value.parse().unwrap(),
+            MemorySegment::FloatTemps => memory.float_temps[offset] = value.parse().unwrap(),
+
+            MemorySegment::IntLocal => memory.memory_stack.last_mut().unwrap().ints[offset] = value.parse().unwrap(),
+            MemorySegment::FloatLocal => memory.memory_stack.last_mut().unwrap().floats[offset] = value.parse().unwrap(),
+            MemorySegment::IntLocalTemps => memory.memory_stack.last_mut().unwrap().int_temps[offset] = value.parse().unwrap(),
+            MemorySegment::FloatLocalTemps => memory.memory_stack.last_mut().unwrap().float_temps[offset] = value.parse().unwrap(),
+
+            MemorySegment::IntConsts => {
+                // IntConsts are usually immutable, handle this as an error if necessary
+                panic!("Cannot modify constants");
+            }
+            MemorySegment::FloatConsts => {
+                panic!("Cannot modify constants");
+            }
+            MemorySegment::StringConsts => memory.string_const[offset] = value,
+        }
+    } else {
+        panic!("Invalid address");
+    }
+}
+
+fn set_param_value(memory: &mut GlobalMemory, address: usize, value: String) {
+    if address < 13000 {
+        memory.memory_stack.last_mut().unwrap().ints[address] = value.parse().unwrap();
+    } else {
+        memory.memory_stack.last_mut().unwrap().floats[address] = value.parse().unwrap();
+    }
+}
+
+fn get_memory_size_main(function_info: &FunctionInfo, const_count: [u32; 3]) -> [usize; 7] {
+    [
+        function_info.resources.int_count as usize,
+        function_info.resources.temp_i_count as usize,
+        function_info.resources.float_count as usize,
+        function_info.resources.temp_f_count as usize,
+        const_count[0] as usize,
+        const_count[1] as usize,
+        const_count[2] as usize,
+    ]
+}
+
+fn fill_consts(const_dir: &HashMap<String, VarInfo>, virtual_memory: &mut GlobalMemory) {
+    for (key, value) in const_dir {
+        let memory = value.location as usize;
+        match value.var_type.as_str() {
+            "int" => {
+                virtual_memory.int_consts[memory - 21000] = key.parse::<i32>().unwrap();
+            }
+            "float" => {
+                virtual_memory.float_consts[memory - 23000] = key.parse::<f32>().unwrap();
+            }
+            "string" => {
+                virtual_memory.string_const[memory - 25000] = key.clone();
+            }
+            _ => {}
+        }
+    }
+}
+
+fn bool_to_int(value: bool) -> i32 {
+    if value {
+        1
+    } else {
+        0
+    }
+}
+
+fn allocate_to_stack(virtual_memory: &mut GlobalMemory, dusty_context: &DustyContext, func_name: &str) {
+    virtual_memory.memory_stack.push(LocalMemory::new(
+        dusty_context.func_dir.get(func_name).unwrap().resources.int_count as usize,
+        dusty_context.func_dir.get(func_name).unwrap().resources.temp_i_count as usize,
+        dusty_context.func_dir.get(func_name).unwrap().resources.float_count as usize,
+        dusty_context.func_dir.get(func_name).unwrap().resources.temp_f_count as usize,
+    ));
+}
+
+fn virtual_machine(dusty_context: &DustyContext) {
+    let main_memory_size = get_memory_size_main(
+        dusty_context.func_dir.get("global").unwrap(),
+        dusty_context.constants,
+    );
+    let mut virtual_memory = GlobalMemory::new(
+        main_memory_size[0], 
+        main_memory_size[1], 
+        main_memory_size[2], 
+        main_memory_size[3], 
+        main_memory_size[4], 
+        main_memory_size[5], 
+        main_memory_size[6]
+    );
+    fill_consts(&dusty_context.const_dir, &mut virtual_memory);
+
+    let mut intruction_pointer = 0;
+
+    println!("{:#?}", virtual_memory);
+
+    println!("################### OUTPUT WINDOW ###################\n");
+    while intruction_pointer < dusty_context.quadruples.len() {
+        let quadruple = &dusty_context.quadruples[intruction_pointer];
+        let operator = &quadruple[0].name;
+        // println!("POINTER: {}", intruction_pointer);
+        match operator.to_string().as_str() {
+            "goto" => {
+                intruction_pointer = quadruple[3].memory as usize - 1;
+                // println!("GOTO: {}", quadruple[3].memory - 1);
+            }
+            "gotof" => {
+                let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                if value == "0" {
+                    intruction_pointer = quadruple[3].memory as usize;
+                    println!("GOTOF: {:#?}, Som {}", dusty_context.quadruples[intruction_pointer], intruction_pointer);
+                } else {
+                    intruction_pointer += 1;
+                }
+            }
+            "era" => {
+                allocate_to_stack(&mut virtual_memory, dusty_context, quadruple[3].name.as_str());
+                intruction_pointer += 1;
+            }
+            "param" => {
+                let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                set_param_value(&mut virtual_memory, quadruple[3].memory as usize, value);
+                intruction_pointer += 1;
+            }
+            "gosub" => {
+                let current_pointer = intruction_pointer + 1;
+                virtual_memory.jump_stack.push(current_pointer);
+                intruction_pointer = quadruple[3].memory as usize - 1;
+                println!("GOSUB: {}", quadruple[3].memory - 1);
+            }
+            "endfunc" => {
+                // println!("ENDFUNC");
+                let return_pointer = virtual_memory.jump_stack.pop().unwrap();
+                intruction_pointer = return_pointer;
+            }
+            "end" => {
+                break;
+            }
+            "=" => {
+                // println!("{:#?}", quadruple);
+                let (value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, value);
+                intruction_pointer += 1;
+            }
+            "+" => {
+                let (left_value, left_type) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, right_type) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                let result = if left_type == "float" || right_type == "float" {
+                    // Coerce to float if either operand is a float
+                    let left = left_value.parse::<f32>().unwrap();
+                    let right = right_value.parse::<f32>().unwrap();
+                    (left + right).to_string()
+                } else {
+                    // Both operands are integers
+                    let left = left_value.parse::<i32>().unwrap();
+                    let right = right_value.parse::<i32>().unwrap();
+                    (left + right).to_string()
+                };
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "-" => {
+                let (left_value, left_type) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, right_type) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                let result = if left_type == "float" || right_type == "float" {
+                    // Coerce to float if either operand is a float
+                    let left = left_value.parse::<f32>().unwrap();
+                    let right = right_value.parse::<f32>().unwrap();
+                    (left - right).to_string()
+                } else {
+                    // Both operands are integers
+                    let left = left_value.parse::<i32>().unwrap();
+                    let right = right_value.parse::<i32>().unwrap();
+                    (left - right).to_string()
+                };
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "*" => {
+                let (left_value, left_type) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, right_type) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                let result = if left_type == "float" || right_type == "float" {
+                    // Coerce to float if either operand is a float
+                    let left = left_value.parse::<f32>().unwrap();
+                    let right = right_value.parse::<f32>().unwrap();
+                    (left * right).to_string()
+                } else {
+                    // Both operands are integers
+                    let left = left_value.parse::<i32>().unwrap();
+                    let right = right_value.parse::<i32>().unwrap();
+                    (left * right).to_string()
+                };
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "/" => {
+                let (left_value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, _) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                // Both operands are integers
+                let left = left_value.parse::<i32>().unwrap();
+                let right = right_value.parse::<i32>().unwrap();
+                let result = (left / right).to_string();
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            ">" => {
+                let (left_value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, _) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                // Both operands are integers
+                let left = left_value.parse::<i32>().unwrap();
+                let right = right_value.parse::<i32>().unwrap();
+                let result = (bool_to_int(left > right)).to_string();
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "<" => {
+                let (left_value, _) = get_value(&virtual_memory, quadruple[1].memory as usize).unwrap();
+                let (right_value, _) = get_value(&virtual_memory, quadruple[2].memory as usize).unwrap();
+
+                // Both operands are integers
+                let left = left_value.parse::<i32>().unwrap();
+                let right = right_value.parse::<i32>().unwrap();
+                let result = (bool_to_int(left < right)).to_string();
+
+                set_value(&mut virtual_memory, quadruple[3].memory as usize, (result).to_string());
+                intruction_pointer += 1;
+            }
+            "print" => {
+                let (value, _) = get_value(&virtual_memory, quadruple[3].memory as usize).unwrap();
+                println!("{}", value);
+                intruction_pointer += 1;
+            }
+            _ => {intruction_pointer += 1;}
+        }
+    }
+    println!("\n################### OUTPUT WINDOW ###################\n");
+
+    println!("{:#?}", virtual_memory);
+}
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app6.dusty";
+    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app8.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
@@ -1574,15 +1989,25 @@ fn main() {
                     &mut dusty_context
                 );
             }
+            // println!("{:#?}", pairs);
         }
         Err(e) => {
             println!("Error: {:#?}", e);
         }
     }
 
+
+
     println!("{:#?}", dusty_context.func_dir);
+    println!("{:#?}", dusty_context.const_dir);
+    println!("{:#?}", dusty_context.constants);
     println!(" ---------- QUADRUPLES AS NAME ---------- ");
     dusty_context.print_quadruples_as_name();
     println!(" ---------- QUADRUPLES AS MEMORY ---------- ");
     dusty_context.print_quadruples_as_memmory();
+
+    println!("");
+    println!("");
+    println!("");
+    virtual_machine(&dusty_context);
 }
