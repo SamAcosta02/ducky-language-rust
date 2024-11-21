@@ -16,6 +16,11 @@ begin
     print!("whoopsie!");
   } else {
     print!("obviously!");
+    if (4 > 1) {
+      print!("another obvious one!");
+    } else {
+      print!("another whoopsie!");
+    };
   };
   example = 5;
   print_some(example);

@@ -158,7 +158,7 @@ pub fn run_virtual_machine(dusty_context: &DustyContext) {
   while intruction_pointer < dusty_context.quadruples.len() {
       let quadruple = &dusty_context.quadruples[intruction_pointer];
       let operator = &quadruple[0].name;
-      // println!("POINTER: {}", intruction_pointer);
+    //   println!("POINTER: {}", intruction_pointer);
       match operator.to_string().as_str() {
           "goto" => {
               intruction_pointer = quadruple[3].memory as usize - 1;
@@ -253,6 +253,7 @@ pub fn run_virtual_machine(dusty_context: &DustyContext) {
                   // Both operands are integers
                   let left = left_value.parse::<i32>().unwrap();
                   let right = right_value.parse::<i32>().unwrap();
+                //   println!("LEFT: {:#?}, RIGHT: {:#?}", left, right);
                   (left * right).to_string()
               };
 

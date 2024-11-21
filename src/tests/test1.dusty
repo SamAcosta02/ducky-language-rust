@@ -7,14 +7,23 @@ void calculate_area(length: int, width: int) {
   area = length * width;
   if (area > 30) {
     print!("Big Area!");
+  } else {
+    print!("Small Area!");
   };
+  print!("something else");
 };
 
 begin
 {
   length = 5;
-  width = 10;
+  width = 1;
   calculate_area(length, width);
   print!(area);
+  if (area > 40) {
+    print!("huge area!");
+  } else {
+    print!("not so huge area...");
+  };
+  print!("something else!!");
 }
 end

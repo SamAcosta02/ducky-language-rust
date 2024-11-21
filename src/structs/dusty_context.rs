@@ -388,8 +388,8 @@ impl DustyContext {
     pub fn fill_while_start(&mut self) {
         let jump = self.quad_data.jump_stack.pop().unwrap();
         self.quadruples[jump - 1][3] = QuadrupleUnit::new(
-            format!("{}", self.quad_data.quad_counter+1), 
-            (self.quad_data.quad_counter+1) as u32
+            format!("{}", self.quad_data.quad_counter), 
+            (self.quad_data.quad_counter) as u32
         );
         // self.quadruples[jump - 1][3] = format!("{}", self.quad_data.quad_counter+1);
     }

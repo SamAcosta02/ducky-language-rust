@@ -1,0 +1,18 @@
+program factorial;
+
+vars result:int;
+
+void factorial(x:int) {
+  result = 1;
+  while (x > 0) do {
+    result = result * x;
+    x = x - 1;
+  };
+};
+
+begin
+{
+  factorial(5);
+  print!(result);
+}
+end

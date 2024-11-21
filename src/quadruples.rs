@@ -22,8 +22,9 @@ pub fn generate_quadruples(
       // Process beginKeyword ----------------------------
       (Rule::beginKeyword, Stage::Before) => {
           // println!("  token BEGIN found:");
-          // println!("  Filling initial GOTO quad");
-          dusty_context.fill_jump();
+        //   println!("  Filling initial GOTO quad");
+          dusty_context.quadruples[0][3].memory = dusty_context.quad_data.quad_counter as u32;
+          dusty_context.quadruples[0][3].name = dusty_context.quad_data.quad_counter.to_string();
           generate_quadruples(pair, Stage::Finished, dusty_context);
       }
       // Process beginKeyword ----------------------------
@@ -142,7 +143,7 @@ pub fn generate_quadruples(
           generate_quadruples(pair, Stage::Finished, dusty_context);
       }
       // Process Vars ------------------------------------
-
+      
 
       // Process typeVar ---------------------------------
       (Rule::typeVar, Stage::Before) => {
@@ -438,6 +439,7 @@ pub fn generate_quadruples(
       // Process elseKeyword -----------------------------
       (Rule::elseKeyword, Stage::Before) => {
           // println!("  token rule ELSE found: {:#?}", pair.as_str());
+        //   println!("filling jump...");
           dusty_context.fill_jump();
           dusty_context.quad_data.jump_stack.push(dusty_context.quad_data.quad_counter);
           dusty_context.generate_goto_quad();
@@ -886,12 +888,15 @@ pub fn generate_quadruples(
           match dusty_context.parent_rules.last().unwrap() {
               Rule::condition => {
                   // println!("  (#13) Complete GOTOF quad");
+                //   println!("filling jump...");
                   dusty_context.fill_jump();
               }
               Rule::while_loop => {
                   // println!("  (#?) Generate GOTO quad to start of while loop");
+                //   println!("filling jump while...");
                   dusty_context.fill_while_start();
                   dusty_context.generate_gotow_quad();
+                //   println!("filling jump while end...");
                   dusty_context.fill_while_end();
               }
               Rule::funcs => {

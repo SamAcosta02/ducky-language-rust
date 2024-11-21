@@ -14,7 +14,7 @@ use structs::{
 
 fn main() {
     // File path to read
-    let path = "C:/Users/wetpe/OneDrive/Documents/_Manual/TEC 8/ducky-language-rust/src/tests/app8.dusty";
+    let path = "C:/Users/wetpe/Documents/Tec8/compiladores/ducky-language-rust/src/tests/test2.dusty";
     let patito_file = fs::read_to_string(&path).expect("error reading file");
 
     let mut dusty_context = DustyContext::new();
@@ -34,5 +34,7 @@ fn main() {
             println!("Error: {:#?}", e);
         }
     }
+    // println!("{:#?}", dusty_context.const_dir);
+    // dusty_context.print_quadruples_as_name();
     run_virtual_machine(&dusty_context);
 }
